@@ -33,6 +33,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOGO_PATH = os.path.join(BASE_DIR, "logo.svg")
+TRAY_ICON_PATH = os.path.join(BASE_DIR, "logo-tray.svg")
 APP_NAME = "Loli — Localhost Linux"
 APP_VERSION = "1.0.0"
 PGWEB_PORT = 8081
@@ -258,8 +259,14 @@ class DashboardPage(QWidget):
         btn_root.setCursor(Qt.CursorShape.PointingHandCursor)
         if HAS_ICONS: btn_root.setIcon(qta.icon("fa5s.folder-open", color="#3498db"))
         btn_root.clicked.connect(self.open_root_dir)
+        btn_quit = QPushButton(" Quit")
+        btn_quit.setObjectName("BtnDanger")
+        btn_quit.setCursor(Qt.CursorShape.PointingHandCursor)
+        if HAS_ICONS: btn_quit.setIcon(qta.icon("fa5s.power-off", color="white"))
+        btn_quit.clicked.connect(lambda: self.window().force_quit())
         header.addWidget(btn_local)
         header.addWidget(btn_root)
+        header.addWidget(btn_quit)
         layout.addLayout(header)
 
         card_db = Card()
@@ -2108,6 +2115,8 @@ class MainWindow(QMainWindow):
         if os.path.exists(LOGO_PATH):
             self.setWindowIcon(QIcon(LOGO_PATH))
         self.resize(1050, 780)
+        # minimum kecil supaya bisa di-snap/tiling (setengah layar) & di-resize bebas
+        self.setMinimumSize(640, 520)
         self.setStyleSheet(STYLESHEET)
         self.is_quitting = False
         
@@ -2165,13 +2174,6 @@ class MainWindow(QMainWindow):
 
         side_lay.addStretch()
 
-        btn_quit_side = QPushButton(" Quit")
-        btn_quit_side.setObjectName("SideQuit")
-        btn_quit_side.setCursor(Qt.CursorShape.PointingHandCursor)
-        if HAS_ICONS: btn_quit_side.setIcon(qta.icon("fa5s.power-off", color="#8d9eb0"))
-        btn_quit_side.clicked.connect(self.force_quit)
-        side_lay.addWidget(btn_quit_side)
-
         sys_frame = QFrame()
         sys_lay = QVBoxLayout(sys_frame)
         sys_lay.setContentsMargins(15, 10, 15, 10)
@@ -2205,7 +2207,12 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         for _label, _icon, cls in self.menu_specs:
             self.stack.addWidget(cls())
-        main_lay.addWidget(self.stack)
+        # Bungkus konten dalam scroll area agar window bisa mengecil -> snap/tiling GNOME jalan
+        content_scroll = QScrollArea()
+        content_scroll.setWidgetResizable(True)
+        content_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        content_scroll.setWidget(self.stack)
+        main_lay.addWidget(content_scroll)
 
         for idx, b in enumerate(self.menu_btns):
             b.clicked.connect(lambda checked, i=idx: self.stack.setCurrentIndex(i))
@@ -2237,19 +2244,65 @@ class MainWindow(QMainWindow):
 
     def setup_tray_icon(self):
         self.tray_icon = QSystemTrayIcon(self)
-        if os.path.exists(LOGO_PATH):
-            self.tray_icon.setIcon(QIcon(LOGO_PATH))
+        icon_path = TRAY_ICON_PATH if os.path.exists(TRAY_ICON_PATH) else LOGO_PATH
+        if os.path.exists(icon_path):
+            self.tray_icon.setIcon(QIcon(icon_path))
         else:
             self.tray_icon.setIcon(QIcon.fromTheme("utilities-system-monitor", QIcon("")))
-        tray_menu = QMenu()
-        show_action = QAction("Open Panel", self)
-        show_action.triggered.connect(self.showNormal)
-        quit_action = QAction("Quit Panel", self)
-        quit_action.triggered.connect(self.force_quit)
-        tray_menu.addAction(show_action)
-        tray_menu.addAction(quit_action)
-        self.tray_icon.setContextMenu(tray_menu)
+        self.tray_icon.setToolTip(APP_NAME)
+
+        def add(menu, text, icon, fn):
+            a = menu.addAction(text)
+            if HAS_ICONS:
+                a.setIcon(qta.icon(icon, color="#2c3e50"))
+            a.triggered.connect(fn)
+            return a
+
+        menu = QMenu()
+        add(menu, "Open Panel", "fa5s.window-maximize", self.show_panel)
+        menu.addSeparator()
+        add(menu, "Start All Services", "fa5s.play", self.start_all_services)
+        add(menu, "Stop All Services", "fa5s.stop", self.stop_all_services)
+        menu.addSeparator()
+        add(menu, "Open Localhost", "fa5s.globe", lambda: webbrowser.open("http://localhost"))
+        add(menu, "Open phpMyAdmin", "fa5s.database", lambda: webbrowser.open("http://localhost/phpmyadmin"))
+        add(menu, "Open pgweb", "fa5s.table", lambda: webbrowser.open(f"http://localhost:{PGWEB_PORT}"))
+        add(menu, "Open www Folder", "fa5s.folder-open", lambda: open_path(get_web_root()))
+        add(menu, "Open Terminal", "fa5s.terminal", lambda: open_terminal(get_web_root()))
+        menu.addSeparator()
+        add(menu, "Quit Loli", "fa5s.power-off", self.force_quit)
+
+        self.tray_icon.setContextMenu(menu)
+        self.tray_icon.activated.connect(self._tray_activated)
         self.tray_icon.show()
+
+    def _tray_activated(self, reason):
+        if reason == QSystemTrayIcon.ActivationReason.Trigger:
+            self.show_panel()
+
+    def show_panel(self):
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def start_all_services(self):
+        # httpd (bukan nginx, hindari konflik :80) + database, satu prompt
+        script = "for s in httpd mariadb postgresql valkey memcached mongod; do systemctl start $s 2>/dev/null || true; done\n"
+
+        def done(_):
+            self.tray_icon.showMessage(APP_NAME, "Start All Services dijalankan.",
+                                       QSystemTrayIcon.MessageIcon.Information, 2500)
+
+        run_async(self, lambda: run_root_script(script), done)
+
+    def stop_all_services(self):
+        script = "for s in httpd nginx mariadb postgresql valkey memcached mongod; do systemctl stop $s 2>/dev/null || true; done\n"
+
+        def done(_):
+            self.tray_icon.showMessage(APP_NAME, "Stop All Services dijalankan.",
+                                       QSystemTrayIcon.MessageIcon.Information, 2500)
+
+        run_async(self, lambda: run_root_script(script), done)
 
     def closeEvent(self, event):
         if not self.is_quitting:
