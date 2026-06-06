@@ -33,6 +33,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOGO_PATH = os.path.join(BASE_DIR, "logo.svg")
 APP_NAME = "Loli — Localhost Linux"
+APP_VERSION = "1.0.0"
 PGWEB_PORT = 8081
 MAILPIT_UI_PORT = 8025
 MAILPIT_SMTP_PORT = 1025
@@ -260,11 +261,12 @@ class DashboardPage(QWidget):
         btn_pma_open.setFixedWidth(150)
         if HAS_ICONS: btn_pma_open.setIcon(qta.icon("fa5s.external-link-alt", color="white"))
         btn_pma_open.clicked.connect(lambda: webbrowser.open("http://localhost/phpmyadmin"))
-        btn_pma_setup = QPushButton(" Setup / Repair")
-        btn_pma_setup.setObjectName("BtnGhost")
-        btn_pma_setup.setFixedWidth(150)
-        if HAS_ICONS: btn_pma_setup.setIcon(qta.icon("fa5s.wrench", color="#34495e"))
-        btn_pma_setup.clicked.connect(self.setup_phpmyadmin)
+        self.btn_pma_setup = QPushButton(" Setup / Repair")
+        self.btn_pma_setup.setObjectName("BtnGhost")
+        self.btn_pma_setup.setFixedWidth(150)
+        if HAS_ICONS: self.btn_pma_setup.setIcon(qta.icon("fa5s.wrench", color="#34495e"))
+        self.btn_pma_setup.clicked.connect(self.on_pma_action)
+        btn_pma_setup = self.btn_pma_setup
         row_pma.addWidget(btn_pma_open)
         row_pma.addWidget(btn_pma_setup)
         card_db.layout.addLayout(row_pma)
@@ -345,6 +347,7 @@ class DashboardPage(QWidget):
         self.svc_packages = {
             "httpd": "httpd", "nginx": "nginx", "mariadb": "mariadb-server",
             "postgresql": "postgresql-server", "valkey": "valkey", "memcached": "memcached",
+            "mongod": "mongodb-org",
         }
 
         self.svc_widgets = {}
@@ -506,6 +509,30 @@ class DashboardPage(QWidget):
         pkg = self.svc_packages.get(svc)
         if not pkg:
             return
+        # MongoDB tidak ada di repo Fedora -> daftarkan repo resmi MongoDB dulu
+        if svc == "mongod":
+            self.console.append("\n> setup repo MongoDB + dnf install mongodb-org...")
+            script = (
+                "cat << 'EOF' > /etc/yum.repos.d/mongodb-org-8.0.repo\n"
+                "[mongodb-org-8.0]\n"
+                "name=MongoDB Repository\n"
+                "baseurl=https://repo.mongodb.org/yum/redhat/9/mongodb-org/8.0/x86_64/\n"
+                "gpgcheck=1\n"
+                "enabled=1\n"
+                "gpgkey=https://pgp.mongodb.com/server-8.0.asc\n"
+                "EOF\n"
+                "dnf install -y mongodb-org\n"
+            )
+
+            def done_mongo(ok):
+                self.console.append("[SUCCESS] mongodb-org terpasang." if ok is True
+                                    else "[ERROR] gagal install MongoDB (lihat dialog/izin).")
+                self.console.verticalScrollBar().setValue(self.console.verticalScrollBar().maximum())
+                QTimer.singleShot(500, self.update_ui)
+
+            run_async(self, lambda: run_root_script(script), done_mongo)
+            return
+
         self.console.append(f"\n> dnf install {pkg}...")
 
         def work():
@@ -576,24 +603,40 @@ class DashboardPage(QWidget):
             return False
 
     def update_db_status(self):
-        # phpMyAdmin: dianggap siap bila alias Apache sudah dibuat
-        if os.path.exists("/etc/httpd/conf.d/phpMyAdmin.conf"):
+        # phpMyAdmin: 3 state -> belum diunduh / belum setup / configured
+        pma_present = os.path.exists(os.path.join(BASE_DIR, "phpmyadmin", "index.php"))
+        if not pma_present:
+            self.lbl_pma_status.setText("○ NOT INSTALLED")
+            self.lbl_pma_status.setObjectName("StatusNA")
+            self.btn_pma_setup.setText(" Download")
+            if HAS_ICONS: self.btn_pma_setup.setIcon(qta.icon("fa5s.download", color="#34495e"))
+        elif os.path.exists("/etc/httpd/conf.d/phpMyAdmin.conf"):
             self.lbl_pma_status.setText("● CONFIGURED")
             self.lbl_pma_status.setObjectName("StatusRun")
+            self.btn_pma_setup.setText(" Setup / Repair")
+            if HAS_ICONS: self.btn_pma_setup.setIcon(qta.icon("fa5s.wrench", color="#34495e"))
         else:
             self.lbl_pma_status.setText("○ NOT SET UP")
             self.lbl_pma_status.setObjectName("StatusNA")
+            self.btn_pma_setup.setText(" Setup / Repair")
+            if HAS_ICONS: self.btn_pma_setup.setIcon(qta.icon("fa5s.wrench", color="#34495e"))
         self.lbl_pma_status.style().unpolish(self.lbl_pma_status)
         self.lbl_pma_status.style().polish(self.lbl_pma_status)
 
-        # pgweb: status berbasis port (akurat walau proses orphan dari sesi lama)
-        running = self._pgweb_running()
-        if running:
+        # pgweb: running (port) / belum diunduh / stopped
+        pg_bin = os.path.join(BASE_DIR, "pgweb_linux_amd64")
+        if self._pgweb_running():
             self.lbl_pg_status.setText("● RUNNING")
             self.lbl_pg_status.setObjectName("StatusRun")
             self.btn_pg_toggle.setText(" Stop")
             self.btn_pg_toggle.setObjectName("BtnDanger")
             if HAS_ICONS: self.btn_pg_toggle.setIcon(qta.icon("fa5s.stop", color="white"))
+        elif not os.path.exists(pg_bin):
+            self.lbl_pg_status.setText("○ NOT INSTALLED")
+            self.lbl_pg_status.setObjectName("StatusNA")
+            self.btn_pg_toggle.setText(" Download")
+            self.btn_pg_toggle.setObjectName("BtnPrimary")
+            if HAS_ICONS: self.btn_pg_toggle.setIcon(qta.icon("fa5s.download", color="white"))
         else:
             self.lbl_pg_status.setText("● STOPPED")
             self.lbl_pg_status.setObjectName("StatusStop")
@@ -719,6 +762,48 @@ class DashboardPage(QWidget):
                 logging.warning(f"Failed to pkill mailpit: {e}")
         self.update_db_status()
 
+    def on_pma_action(self):
+        # Tombol dinamis: Download bila belum ada, selain itu Setup/Repair
+        if not os.path.exists(os.path.join(BASE_DIR, "phpmyadmin", "index.php")):
+            self.download_phpmyadmin()
+        else:
+            self.setup_phpmyadmin()
+
+    def download_phpmyadmin(self):
+        self.btn_pma_setup.setEnabled(False)
+        self.btn_pma_setup.setText(" Downloading...")
+
+        def work():
+            import json, urllib.request, zipfile
+            meta = json.loads(urllib.request.urlopen(
+                "https://www.phpmyadmin.net/home_page/version.json", timeout=30).read().decode())
+            ver = meta.get("version")
+            if not ver:
+                raise RuntimeError("tidak bisa mendeteksi versi phpMyAdmin")
+            url = f"https://files.phpmyadmin.net/phpMyAdmin/{ver}/phpMyAdmin-{ver}-all-languages.zip"
+            zpath = os.path.join(BASE_DIR, "_pma.zip")
+            subprocess.run(["curl", "-fL", "-o", zpath, url], check=True, timeout=360)
+            with zipfile.ZipFile(zpath) as z:
+                z.extractall(BASE_DIR)
+            extracted = os.path.join(BASE_DIR, f"phpMyAdmin-{ver}-all-languages")
+            target = os.path.join(BASE_DIR, "phpmyadmin")
+            if os.path.isdir(extracted) and not os.path.exists(target):
+                shutil.move(extracted, target)
+            try: os.remove(zpath)
+            except Exception: pass
+            return ver
+
+        def done(res):
+            self.btn_pma_setup.setEnabled(True)
+            if isinstance(res, str):
+                QMessageBox.information(self, "phpMyAdmin",
+                    f"phpMyAdmin {res} berhasil diunduh.\nKlik 'Setup / Repair' untuk konfigurasi.")
+            else:
+                QMessageBox.critical(self, "Error", f"Gagal mengunduh phpMyAdmin:\n{res}")
+            self.update_db_status()
+
+        run_async(self, work, done)
+
     def setup_phpmyadmin(self):
         import secrets
         pma = os.path.join(BASE_DIR, "phpmyadmin")
@@ -803,8 +888,40 @@ class DashboardPage(QWidget):
     def toggle_pgweb(self):
         if self._pgweb_running():
             self.stop_pgweb()
+        elif not os.path.exists(os.path.join(BASE_DIR, "pgweb_linux_amd64")):
+            self.download_pgweb()
         else:
             self.start_pgweb()
+
+    def download_pgweb(self):
+        self.btn_pg_toggle.setEnabled(False)
+        self.btn_pg_toggle.setText(" Downloading...")
+        url = "https://github.com/sosedoff/pgweb/releases/latest/download/pgweb_linux_amd64.zip"
+
+        def work():
+            import zipfile
+            zpath = os.path.join(BASE_DIR, "_pgweb.zip")
+            subprocess.run(["curl", "-fL", "-o", zpath, url], check=True, timeout=240)
+            with zipfile.ZipFile(zpath) as z:
+                member = next((n for n in z.namelist() if "pgweb" in n.lower() and not n.endswith("/")), None)
+                if not member:
+                    raise RuntimeError("binary pgweb tidak ditemukan di arsip")
+                with z.open(member) as src, open(os.path.join(BASE_DIR, "pgweb_linux_amd64"), "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+            os.chmod(os.path.join(BASE_DIR, "pgweb_linux_amd64"), 0o755)
+            try: os.remove(zpath)
+            except Exception: pass
+            return True
+
+        def done(res):
+            self.btn_pg_toggle.setEnabled(True)
+            if res is True:
+                QMessageBox.information(self, "pgweb", "pgweb berhasil diunduh. Klik Start untuk menjalankan.")
+            else:
+                QMessageBox.critical(self, "Error", f"Gagal mengunduh pgweb:\n{res}")
+            self.update_db_status()
+
+        run_async(self, work, done)
 
     def start_pgweb(self):
         if self._pgweb_running():
@@ -1894,6 +2011,70 @@ class LogsPage(QWidget):
         run_async(self, work, done)
 
 
+class AboutPage(QWidget):
+    def __init__(self):
+        super().__init__()
+        layout = QVBoxLayout(); layout.setContentsMargins(20, 20, 20, 20); layout.setSpacing(15)
+        layout.addWidget(QLabel("About", objectName="PageTitle"))
+
+        card = Card()
+        inner = QVBoxLayout()
+        inner.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        inner.setSpacing(8)
+        logo = QLabel(); logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        pm = QIcon(LOGO_PATH).pixmap(QSize(96, 96)) if os.path.exists(LOGO_PATH) else None
+        if pm is not None and not pm.isNull():
+            logo.setPixmap(pm)
+            inner.addWidget(logo)
+        name = QLabel(APP_NAME); name.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        name.setStyleSheet("font-size: 22px; font-weight: bold; color: #2c3e50;")
+        inner.addWidget(name)
+        ver = QLabel(f"Versi {APP_VERSION}"); ver.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        ver.setStyleSheet("font-size: 14px; color: #3498db; font-weight: bold;")
+        inner.addWidget(ver)
+        desc = QLabel("Panel desktop untuk mengelola environment web development lokal di Linux (Fedora-first).")
+        desc.setAlignment(Qt.AlignmentFlag.AlignCenter); desc.setWordWrap(True); desc.setObjectName("Hint")
+        inner.addWidget(desc)
+        link = QLabel('<a href="https://github.com/s4rt4/loli" style="color:#3498db;">github.com/s4rt4/loli</a>')
+        link.setAlignment(Qt.AlignmentFlag.AlignCenter); link.setOpenExternalLinks(True)
+        inner.addWidget(link)
+        card.layout.addLayout(inner)
+        layout.addWidget(card)
+
+        info = Card()
+        info.layout.addWidget(QLabel("System Info", objectName="H1"))
+        for k, v in self.sysinfo():
+            row = QHBoxLayout()
+            lk = QLabel(k); lk.setFixedWidth(140); lk.setStyleSheet("color: #7f8c8d;")
+            lv = QLabel(v); lv.setStyleSheet("font-weight: 600; color: #2c3e50;")
+            row.addWidget(lk); row.addWidget(lv); row.addStretch()
+            info.layout.addLayout(row)
+        layout.addWidget(info)
+
+        layout.addStretch()
+        self.setLayout(layout)
+
+    def sysinfo(self):
+        import platform
+        from PyQt6.QtCore import QT_VERSION_STR
+        distro = "Linux"
+        try:
+            with open("/etc/os-release") as f:
+                for line in f:
+                    if line.startswith("PRETTY_NAME="):
+                        distro = line.split("=", 1)[1].strip().strip('"')
+                        break
+        except Exception:
+            pass
+        return [
+            ("Aplikasi", f"{APP_NAME}  v{APP_VERSION}"),
+            ("OS", distro),
+            ("Kernel", platform.release()),
+            ("Python", platform.python_version()),
+            ("Qt", QT_VERSION_STR),
+        ]
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -1948,6 +2129,7 @@ class MainWindow(QMainWindow):
             ("Logs", "fa5s.file-alt", LogsPage),
             ("Discovery", "fa5s.compass", DiscoveryPage),
             ("Utilities", "fa5s.tools", UtilsPage),
+            ("About", "fa5s.info-circle", AboutPage),
         ]
         self.menu_btns = []
         for label, icon, _cls in self.menu_specs:
