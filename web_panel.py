@@ -26,7 +26,8 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QProgressBar, QGridLayout, QCheckBox, QSystemTrayIcon, QMenu, 
                              QScrollArea, QTableWidget, QTableWidgetItem, QHeaderView, QTabWidget)
 from PyQt6.QtCore import QTimer, Qt, QSize, QThread, pyqtSignal
-from PyQt6.QtGui import QFont, QIcon, QAction, QColor
+from PyQt6.QtGui import QFont, QIcon, QAction, QColor, QPixmap, QPainter
+from PyQt6.QtSvg import QSvgRenderer
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -155,6 +156,23 @@ def run_async(parent, fn, on_done=None):
     parent._workers.append(w)
     w.start()
     return w
+
+def load_logo_pixmap(size: int):
+    """Render logo.svg ke pixmap persegi penuh (tanpa terpotong seperti QIcon.pixmap)."""
+    if not os.path.exists(LOGO_PATH):
+        return None
+    try:
+        renderer = QSvgRenderer(LOGO_PATH)
+        pm = QPixmap(size, size)
+        pm.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pm)
+        renderer.render(painter)
+        painter.end()
+        return pm
+    except Exception as e:
+        logging.warning(f"Failed to render logo: {e}")
+        pm = QIcon(LOGO_PATH).pixmap(QSize(size, size))
+        return pm if not pm.isNull() else None
 
 def get_web_root() -> str:
     try:
@@ -2022,8 +2040,9 @@ class AboutPage(QWidget):
         inner.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         inner.setSpacing(8)
         logo = QLabel(); logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        pm = QIcon(LOGO_PATH).pixmap(QSize(96, 96)) if os.path.exists(LOGO_PATH) else None
+        pm = load_logo_pixmap(96)
         if pm is not None and not pm.isNull():
+            logo.setFixedHeight(104)
             logo.setPixmap(pm)
             inner.addWidget(logo)
         name = QLabel(APP_NAME); name.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -2035,9 +2054,16 @@ class AboutPage(QWidget):
         desc = QLabel("Panel desktop untuk mengelola environment web development lokal di Linux (Fedora-first).")
         desc.setAlignment(Qt.AlignmentFlag.AlignCenter); desc.setWordWrap(True); desc.setObjectName("Hint")
         inner.addWidget(desc)
-        link = QLabel('<a href="https://github.com/s4rt4/loli" style="color:#3498db;">github.com/s4rt4/loli</a>')
-        link.setAlignment(Qt.AlignmentFlag.AlignCenter); link.setOpenExternalLinks(True)
-        inner.addWidget(link)
+        gh_row = QHBoxLayout()
+        gh_row.addStretch()
+        btn_gh = QPushButton(" github.com/s4rt4/loli")
+        btn_gh.setObjectName("BtnGhost")
+        btn_gh.setCursor(Qt.CursorShape.PointingHandCursor)
+        if HAS_ICONS: btn_gh.setIcon(qta.icon("fa5b.github", color="#2c3e50"))
+        btn_gh.clicked.connect(lambda: webbrowser.open("https://github.com/s4rt4/loli"))
+        gh_row.addWidget(btn_gh)
+        gh_row.addStretch()
+        inner.addLayout(gh_row)
         card.layout.addLayout(inner)
         layout.addWidget(card)
 
@@ -2102,7 +2128,7 @@ class MainWindow(QMainWindow):
         brand_lay = QVBoxLayout(brand)
         brand_lay.setContentsMargins(0, 0, 0, 25)
         brand_lay.setSpacing(2)
-        _logo_pm = QIcon(LOGO_PATH).pixmap(QSize(58, 58)) if os.path.exists(LOGO_PATH) else None
+        _logo_pm = load_logo_pixmap(58)
         if _logo_pm is not None and not _logo_pm.isNull():
             logo_lbl = QLabel()
             logo_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
