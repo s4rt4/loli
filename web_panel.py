@@ -2243,6 +2243,8 @@ class MainWindow(QMainWindow):
         return btn
 
     def setup_tray_icon(self):
+        # GNOME modern sering tanpa system tray -> deteksi agar window tidak "hilang"
+        self.has_tray = QSystemTrayIcon.isSystemTrayAvailable()
         self.tray_icon = QSystemTrayIcon(self)
         icon_path = TRAY_ICON_PATH if os.path.exists(TRAY_ICON_PATH) else LOGO_PATH
         if os.path.exists(icon_path):
@@ -2305,14 +2307,22 @@ class MainWindow(QMainWindow):
         run_async(self, lambda: run_root_script(script), done)
 
     def closeEvent(self, event):
-        if not self.is_quitting:
-            event.ignore()
-            self.hide()
-            self.tray_icon.showMessage("Running in Background", "Panel disembunyikan ke taskbar.", QSystemTrayIcon.MessageIcon.Information, 2500)
-        else:
+        if self.is_quitting:
             if hasattr(self, 'global_timer'):
                 self.global_timer.stop()
             event.accept()
+            return
+        if getattr(self, 'has_tray', False):
+            # Ada system tray -> sembunyikan ke tray
+            event.ignore()
+            self.hide()
+            self.tray_icon.showMessage("Berjalan di Background",
+                                       "Loli disembunyikan ke tray. Klik ikon tray untuk membuka.",
+                                       QSystemTrayIcon.MessageIcon.Information, 2500)
+        else:
+            # Tidak ada tray (GNOME default) -> minimize supaya window tidak hilang
+            event.ignore()
+            self.showMinimized()
 
     def force_quit(self):
         self.is_quitting = True
@@ -2329,6 +2339,12 @@ class MainWindow(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    # Identitas app -> GNOME/Wayland mencocokkan ke loli.desktop (ikon & nama di dock, bukan "python3")
+    app.setApplicationName("Loli")
+    app.setApplicationDisplayName(APP_NAME)
+    app.setDesktopFileName("loli")
+    if os.path.exists(LOGO_PATH):
+        app.setWindowIcon(QIcon(LOGO_PATH))
     app.setQuitOnLastWindowClosed(False)
     win = MainWindow()
     win.show()

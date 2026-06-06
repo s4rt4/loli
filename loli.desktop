@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Loli
+GenericName=Localhost Linux Panel
+Comment=Panel manajemen environment web development lokal (Fedora)
+Exec=python3 /var/www/html/web-panel/web_panel.py
+Path=/var/www/html/web-panel
+Icon=loli
+Terminal=false
+Categories=Development;
+StartupWMClass=loli
+StartupNotify=true
