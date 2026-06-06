@@ -1,0 +1,19 @@
+# Kredensial lokal — jangan di-commit
+Loli-Login.txt
+
+# Python
+__pycache__/
+*.pyc
+
+# Log sementara
+*.log
+pgweb-*.log
+mailpit-*.log
+
+# Binary/aset pihak ketiga (diunduh terpisah, jangan masuk repo)
+pgweb_linux_amd64
+mailpit
+phpmyadmin/
+
+# Config phpMyAdmin (berisi secret)
+phpmyadmin/config.inc.php
