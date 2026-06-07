@@ -1,0 +1,3 @@
+#!/bin/bash
+# Launcher for the system-installed Loli panel.
+exec python3 /usr/share/loli/web_panel.py "$@"

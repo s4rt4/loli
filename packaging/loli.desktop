@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Loli
+GenericName=Localhost Linux Panel
+Comment=Panel manajemen environment web development lokal
+Exec=loli
+Icon=loli
+Terminal=false
+Categories=Development;System;
+StartupWMClass=loli
+StartupNotify=true

@@ -17,3 +17,5 @@ phpmyadmin/
 
 # Config phpMyAdmin (berisi secret)
 phpmyadmin/config.inc.php
+build/
+dist/

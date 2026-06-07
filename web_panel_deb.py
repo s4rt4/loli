@@ -35,6 +35,13 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOGO_PATH = os.path.join(BASE_DIR, "logo.svg")
 TRAY_ICON_PATH = os.path.join(BASE_DIR, "logo-tray.svg")
+# Tool yang diunduh saat runtime (pgweb/mailpit/phpMyAdmin) butuh lokasi yang bisa ditulis.
+# Dari source, BASE_DIR bisa ditulis; saat terinstal sistem (mis. /usr/share/loli) pakai data dir per-user.
+DATA_DIR = BASE_DIR if os.access(BASE_DIR, os.W_OK) else os.path.join(os.path.expanduser("~"), ".local", "share", "loli")
+try:
+    os.makedirs(DATA_DIR, exist_ok=True)
+except Exception:
+    DATA_DIR = BASE_DIR
 APP_NAME = "Loli — Localhost Linux"
 APP_VERSION = "1.0.0"
 PGWEB_PORT = 8081
@@ -652,7 +659,7 @@ class DashboardPage(QWidget):
 
     def update_db_status(self):
         # phpMyAdmin: 3 state -> belum diunduh / belum setup / configured
-        pma_present = os.path.exists(os.path.join(BASE_DIR, "phpmyadmin", "index.php"))
+        pma_present = os.path.exists(os.path.join(DATA_DIR, "phpmyadmin", "index.php"))
         if not pma_present:
             self.lbl_pma_status.setText("○ NOT INSTALLED")
             self.lbl_pma_status.setObjectName("StatusNA")
@@ -672,7 +679,7 @@ class DashboardPage(QWidget):
         self.lbl_pma_status.style().polish(self.lbl_pma_status)
 
         # pgweb: running (port) / belum diunduh / stopped
-        pg_bin = os.path.join(BASE_DIR, "pgweb_linux_amd64")
+        pg_bin = os.path.join(DATA_DIR, "pgweb_linux_amd64")
         if self._pgweb_running():
             self.lbl_pg_status.setText("● RUNNING")
             self.lbl_pg_status.setObjectName("StatusRun")
@@ -696,7 +703,7 @@ class DashboardPage(QWidget):
             w.style().polish(w)
 
         # mailpit: running (port) / belum diunduh / stopped
-        mp_bin = os.path.join(BASE_DIR, "mailpit")
+        mp_bin = os.path.join(DATA_DIR, "mailpit")
         if port_in_use(MAILPIT_UI_PORT):
             self.lbl_mp_status.setText("● RUNNING")
             self.lbl_mp_status.setObjectName("StatusRun")
@@ -720,7 +727,7 @@ class DashboardPage(QWidget):
             w.style().polish(w)
 
     def toggle_mailpit(self):
-        mp_bin = os.path.join(BASE_DIR, "mailpit")
+        mp_bin = os.path.join(DATA_DIR, "mailpit")
         if port_in_use(MAILPIT_UI_PORT):
             self.stop_mailpit()
         elif not os.path.exists(mp_bin):
@@ -732,7 +739,7 @@ class DashboardPage(QWidget):
         self.btn_mp_toggle.setEnabled(False)
         self.btn_mp_toggle.setText(" Downloading...")
         url = "https://github.com/axllent/mailpit/releases/latest/download/mailpit-linux-amd64.tar.gz"
-        dest = BASE_DIR
+        dest = DATA_DIR
 
         def work():
             tar = os.path.join(dest, "_mailpit.tar.gz")
@@ -758,7 +765,7 @@ class DashboardPage(QWidget):
             webbrowser.open(f"http://localhost:{MAILPIT_UI_PORT}")
             self.update_db_status()
             return
-        binary = os.path.join(BASE_DIR, "mailpit")
+        binary = os.path.join(DATA_DIR, "mailpit")
         if not os.path.exists(binary):
             self.download_mailpit()
             return
@@ -805,14 +812,14 @@ class DashboardPage(QWidget):
         self.mailpit_proc = None
         if port_in_use(MAILPIT_UI_PORT):
             try:
-                subprocess.run(["pkill", "-f", f"{BASE_DIR}/mailpit"], timeout=5)
+                subprocess.run(["pkill", "-f", f"{DATA_DIR}/mailpit"], timeout=5)
             except Exception as e:
                 logging.warning(f"Failed to pkill mailpit: {e}")
         self.update_db_status()
 
     def on_pma_action(self):
         # Tombol dinamis: Download bila belum ada, selain itu Setup/Repair
-        if not os.path.exists(os.path.join(BASE_DIR, "phpmyadmin", "index.php")):
+        if not os.path.exists(os.path.join(DATA_DIR, "phpmyadmin", "index.php")):
             self.download_phpmyadmin()
         else:
             self.setup_phpmyadmin()
@@ -829,12 +836,12 @@ class DashboardPage(QWidget):
             if not ver:
                 raise RuntimeError("tidak bisa mendeteksi versi phpMyAdmin")
             url = f"https://files.phpmyadmin.net/phpMyAdmin/{ver}/phpMyAdmin-{ver}-all-languages.zip"
-            zpath = os.path.join(BASE_DIR, "_pma.zip")
+            zpath = os.path.join(DATA_DIR, "_pma.zip")
             subprocess.run(["curl", "-fL", "-o", zpath, url], check=True, timeout=360)
             with zipfile.ZipFile(zpath) as z:
-                z.extractall(BASE_DIR)
-            extracted = os.path.join(BASE_DIR, f"phpMyAdmin-{ver}-all-languages")
-            target = os.path.join(BASE_DIR, "phpmyadmin")
+                z.extractall(DATA_DIR)
+            extracted = os.path.join(DATA_DIR, f"phpMyAdmin-{ver}-all-languages")
+            target = os.path.join(DATA_DIR, "phpmyadmin")
             if os.path.isdir(extracted) and not os.path.exists(target):
                 shutil.move(extracted, target)
             try: os.remove(zpath)
@@ -854,7 +861,7 @@ class DashboardPage(QWidget):
 
     def setup_phpmyadmin(self):
         import secrets
-        pma = os.path.join(BASE_DIR, "phpmyadmin")
+        pma = os.path.join(DATA_DIR, "phpmyadmin")
         if not os.path.exists(os.path.join(pma, "index.php")):
             QMessageBox.critical(self, "Error", f"phpMyAdmin tidak ditemukan di:\n{pma}")
             return
@@ -932,7 +939,7 @@ class DashboardPage(QWidget):
     def toggle_pgweb(self):
         if self._pgweb_running():
             self.stop_pgweb()
-        elif not os.path.exists(os.path.join(BASE_DIR, "pgweb_linux_amd64")):
+        elif not os.path.exists(os.path.join(DATA_DIR, "pgweb_linux_amd64")):
             self.download_pgweb()
         else:
             self.start_pgweb()
@@ -944,15 +951,15 @@ class DashboardPage(QWidget):
 
         def work():
             import zipfile
-            zpath = os.path.join(BASE_DIR, "_pgweb.zip")
+            zpath = os.path.join(DATA_DIR, "_pgweb.zip")
             subprocess.run(["curl", "-fL", "-o", zpath, url], check=True, timeout=240)
             with zipfile.ZipFile(zpath) as z:
                 member = next((n for n in z.namelist() if "pgweb" in n.lower() and not n.endswith("/")), None)
                 if not member:
                     raise RuntimeError("binary pgweb tidak ditemukan di arsip")
-                with z.open(member) as src, open(os.path.join(BASE_DIR, "pgweb_linux_amd64"), "wb") as dst:
+                with z.open(member) as src, open(os.path.join(DATA_DIR, "pgweb_linux_amd64"), "wb") as dst:
                     shutil.copyfileobj(src, dst)
-            os.chmod(os.path.join(BASE_DIR, "pgweb_linux_amd64"), 0o755)
+            os.chmod(os.path.join(DATA_DIR, "pgweb_linux_amd64"), 0o755)
             try: os.remove(zpath)
             except Exception: pass
             return True
@@ -974,7 +981,7 @@ class DashboardPage(QWidget):
             self.update_db_status()
             return
 
-        binary = os.path.join(BASE_DIR, "pgweb_linux_amd64")
+        binary = os.path.join(DATA_DIR, "pgweb_linux_amd64")
         if not os.path.exists(binary):
             QMessageBox.critical(self, "Error", f"Binary pgweb tidak ditemukan di:\n{binary}")
             return
@@ -1911,9 +1918,9 @@ class DiscoveryPage(QWidget):
             ("PostgreSQL Data", "/var/lib/postgresql"),
             ("PostgreSQL Config", first("/etc/postgresql/*/main/postgresql.conf", "/etc/postgresql")),
             ("Hosts File", "/etc/hosts"),
-            ("pgweb binary", os.path.join(BASE_DIR, "pgweb_linux_amd64")),
-            ("mailpit binary", os.path.join(BASE_DIR, "mailpit")),
-            ("phpMyAdmin", os.path.join(BASE_DIR, "phpmyadmin")),
+            ("pgweb binary", os.path.join(DATA_DIR, "pgweb_linux_amd64")),
+            ("mailpit binary", os.path.join(DATA_DIR, "mailpit")),
+            ("phpMyAdmin", os.path.join(DATA_DIR, "phpmyadmin")),
             ("php", shutil.which("php") or "php (tidak ada)"),
             ("mariadb", shutil.which("mariadb") or "mariadb (tidak ada)"),
             ("psql", shutil.which("psql") or "psql (tidak ada)"),
