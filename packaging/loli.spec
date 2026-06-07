@@ -11,7 +11,8 @@ BuildArch:      noarch
 Requires:       python3
 Requires:       python3-pyqt6
 Requires:       python3-psutil
-Requires:       python3-qtawesome
+# Fedora ships this as python3-QtAwesome (capital QtA); needed for the UI icons.
+Requires:       python3-QtAwesome
 
 %description
 Loli is a desktop control panel for managing a local web development
