@@ -13,6 +13,9 @@ Requires:       python3-pyqt6
 Requires:       python3-psutil
 # Fedora ships this as python3-QtAwesome (capital QtA); needed for the UI icons.
 Requires:       python3-QtAwesome
+# Privileged actions use pkexec, which needs a polkit authentication agent.
+# GNOME/KDE bundle their own; pull a lightweight one for XFCE/minimal sessions.
+Recommends:     polkit-gnome
 
 %description
 Loli is a desktop control panel for managing a local web development

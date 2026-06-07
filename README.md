@@ -5,52 +5,63 @@
 <h1 align="center">Loli — Localhost Linux</h1>
 
 <p align="center">
-  Panel desktop ringan untuk mengelola environment web development lokal di <b>Linux (Fedora-first)</b>.
+  Panel desktop ringan untuk mengelola environment web development lokal di <b>Linux</b>.
 </p>
 
 ---
 
-Loli adalah panel kontrol GUI (PyQt6) bergaya Laragon/XAMPP untuk Linux: kontrol service, kelola database, lihat proses, dan utilitas dev lokal dalam satu jendela. Dibangun dan dioptimalkan untuk **Fedora** (httpd, php-fpm, MariaDB, PostgreSQL, dll).
+Loli adalah panel kontrol GUI (PyQt6) bergaya Laragon/XAMPP untuk Linux: kontrol service, kelola database, lihat proses, dan utilitas dev lokal dalam satu jendela. Tersedia dua varian dengan fitur & tampilan identik:
+
+- **`web_panel.py`** — untuk **Fedora** (httpd, php-fpm tunggal, `dnf`, SELinux ditangani otomatis).
+- **`web_panel_deb.py`** — untuk **Debian/Ubuntu** (apache2, multi-versi PHP via `a2enmod`/`update-alternatives`, `apt`).
 
 ## Fitur
 
-- **Dashboard** — start/stop/restart service (Apache/httpd, Nginx, MariaDB, PostgreSQL, Valkey/Redis, Memcached, MongoDB), termasuk tombol *Install* untuk service yang belum ada.
-- **Database Tools** — phpMyAdmin (setup otomatis: alias Apache + SELinux + AllowNoPassword), pgweb, dan Mailpit (unduh & jalankan).
+- **Dashboard** — start/stop/restart service (Apache, Nginx, MariaDB, PostgreSQL, Redis, Memcached, MongoDB), lengkap dengan tombol *Install* untuk service yang belum terpasang.
+- **Database Tools** — phpMyAdmin (setup otomatis), pgweb, dan Mailpit (unduh & jalankan saat dibutuhkan).
 - **Projects** — scan web root, deteksi tipe project (Laravel, WordPress, Node.js, Go, Python, PHP), aksi cepat: browser, file manager, terminal, editor.
-- **PHP Manager** — info versi + toggle ekstensi (via dnf).
+- **PHP Manager** — info versi + toggle ekstensi. Di Debian: berpindah versi PHP (Apache & Nginx) otomatis.
 - **Port Sniper** — pindai port aktif & hentikan prosesnya.
 - **Process Monitor** — daftar proses + filter + kill.
 - **Config Editor** — edit file konfigurasi server.
 - **Logs** — penampil log tab (journalctl: Apache, PHP-FPM, MariaDB, PostgreSQL, Nginx).
 - **Discovery** — peta path penting yang terdeteksi otomatis.
 - **Utilities** — fix permission, virtual host `.test`/`.local` (auto update `/etc/hosts`), dan setup database (Init PostgreSQL, PostgreSQL Login, MariaDB Passwordless).
+- **UI** — status pill, bar resource berwarna sesuai beban, hover, dan system tray (menu ala-Laragon).
 
-## Arsitektur
+## Instalasi (Fedora — .rpm)
 
-- Satu file: `web_panel.py` (PyQt6).
-- Operasi privileged dijalankan via `pkexec` di **background thread** (`run_async`) agar UI tidak freeze.
-- Logo: `logo.svg`.
-
-## Menjalankan
+Ambil dari [Releases](https://github.com/s4rt4/loli/releases):
 
 ```bash
-python3 web_panel.py
+sudo dnf install -y https://github.com/s4rt4/loli/releases/download/v1.0.0/loli-1.0.0-1.fc43.noarch.rpm
+loli   # atau buka "Loli" dari menu aplikasi
 ```
 
-### Dependensi
+Membangun ulang dari sumber: `sudo dnf install -y rpm-build` lalu `bash packaging/build-rpm.sh` (hasil di `dist/`).
+
+## Menjalankan dari sumber
 
 ```bash
 python3 -m pip install --user PyQt6 psutil qtawesome
+python3 web_panel.py        # Fedora
+python3 web_panel_deb.py    # Debian/Ubuntu
 ```
 
-Aset pihak ketiga (tidak disertakan di repo): letakkan di folder yang sama —
-- `pgweb_linux_amd64` (client PostgreSQL web)
-- `phpmyadmin/` (sumber phpMyAdmin)
-- `mailpit` (otomatis diunduh lewat tombol Download)
+Aset pihak ketiga (tidak disertakan di repo) diunduh otomatis lewat tombol *Download* di aplikasi: `pgweb`, `phpmyadmin/`, `mailpit`. Saat Loli terinstal sistem (read-only), unduhan disimpan per-user di `~/.local/share/loli`.
 
-## Catatan
+## Kompatibilitas desktop
 
-- **Fedora-first.** Versi Debian/Ubuntu (`web_panel_deb.py`) menyusul.
+| Desktop | Status |
+|---------|--------|
+| **GNOME** | Berjalan. Tray butuh ekstensi `gnome-shell-extension-appindicator` agar ikon tray tampil; tanpa itu Loli minimize biasa. |
+| **KDE Plasma** | Berjalan mulus; tray native berfungsi penuh. |
+| **XFCE / LXQt / WM minimalis** | Berjalan. Aksi root memakai `pkexec`, jadi **perlu agen autentikasi polkit** (mis. `lxpolkit`, `polkit-gnome`). Loli mendeteksi & memperingatkan bila agen tidak berjalan. |
+
+## Arsitektur
+
+- Operasi privileged dijalankan via `pkexec` di **background thread** (`run_async`) agar UI tidak freeze.
+- Logo: `logo.svg`. Packaging RPM: `packaging/`.
 - Ditujukan untuk server lokal/development, bukan produksi.
 
 ## Lisensi

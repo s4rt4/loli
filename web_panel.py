@@ -239,6 +239,26 @@ def open_editor(path: str) -> bool:
     open_path(path)
     return False
 
+def polkit_agent_running() -> bool:
+    """True bila kemungkinan besar ada authentication agent polkit (untuk dialog password pkexec).
+    Catatan: GNOME/KDE menyatukan agen ke dalam shell-nya (tak ada proses terpisah); XFCE/LXQt/WM
+    minimalis butuh agen standalone (lxpolkit, polkit-gnome, dsb)."""
+    try:
+        for p in psutil.process_iter(['name', 'cmdline']):
+            name = (p.info.get('name') or '').lower()
+            if name == 'gnome-shell':  # GNOME: agen polkit menyatu di shell
+                return True
+            if ('polkit' in name and name != 'polkitd') or 'policykit' in name:
+                return True
+            cmd = ' '.join(p.info.get('cmdline') or []).lower()
+            if any(k in cmd for k in ('authentication-agent', 'lxpolkit', 'xfce-polkit', 'policykit-agent')):
+                return True
+    except Exception as e:
+        logging.warning(f"polkit agent check failed: {e}")
+    # Desktop yang dikenal membundel agen polkit ke sesi/shell-nya
+    de = (os.environ.get('XDG_CURRENT_DESKTOP', '') + ':' + os.environ.get('XDG_SESSION_DESKTOP', '')).lower()
+    return any(k in de for k in ('gnome', 'kde', 'plasma', 'cinnamon', 'unity', 'pantheon', 'deepin', 'mate', 'ukui'))
+
 class Card(QFrame):
     def __init__(self, layout_type="v"):
         super().__init__()
@@ -2251,6 +2271,32 @@ class MainWindow(QMainWindow):
         self.global_timer.timeout.connect(self.update_sidebar_resources)
         self.global_timer.start(2000)
         self.update_sidebar_resources()
+
+        # XFCE / WM minimalis kadang tak menjalankan agen polkit -> pkexec gagal diam-diam. Cek sekali.
+        QTimer.singleShot(1500, self._check_polkit_agent)
+
+    def _check_polkit_agent(self):
+        if not shutil.which("pkexec") or polkit_agent_running():
+            return
+        try:
+            self.stack.widget(0).console.append(
+                "[WARNING] Agen autentikasi polkit tidak terdeteksi — aksi root via pkexec mungkin gagal. "
+                "Jalankan salah satu agen (mis. 'lxpolkit')."
+            )
+        except Exception:
+            pass
+        QMessageBox.warning(
+            self, "Agen polkit tidak ditemukan",
+            "Tidak terdeteksi agen autentikasi polkit yang berjalan.\n\n"
+            "Loli memakai 'pkexec' untuk aksi yang butuh akses root (start/stop service, "
+            "install paket, edit konfigurasi). Tanpa agen polkit, dialog password tidak muncul "
+            "dan aksi tersebut akan gagal.\n\n"
+            "Umum terjadi di XFCE / window manager minimalis. Jalankan salah satu agen, mis.:\n"
+            "  • lxpolkit\n"
+            "  • /usr/libexec/polkit-gnome-authentication-agent-1\n"
+            "  • mate-polkit / xfce-polkit\n\n"
+            "Tip: tambahkan ke autostart sesi desktop Anda."
+        )
 
     @staticmethod
     def _load_color(v):
