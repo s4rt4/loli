@@ -24,7 +24,8 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QLabel, QPushButton, QFrame, QMessageBox, 
                              QStackedWidget, QTextEdit, QLineEdit, QFileDialog, QComboBox,
                              QProgressBar, QGridLayout, QCheckBox, QSystemTrayIcon, QMenu, 
-                             QScrollArea, QTableWidget, QTableWidgetItem, QHeaderView, QTabWidget)
+                             QScrollArea, QTableWidget, QTableWidgetItem, QHeaderView, QTabWidget,
+                             QSizePolicy)
 from PyQt6.QtCore import QTimer, Qt, QSize, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QIcon, QAction, QColor, QPixmap, QPainter
 from PyQt6.QtSvg import QSvgRenderer
@@ -70,9 +71,13 @@ QLabel#Brand { color: white; font-size: 20px; font-weight: bold; }
 QLabel#BrandSub { color: #8d9eb0; font-size: 9px; font-weight: bold; letter-spacing: 2px; }
 QPushButton#SideQuit { text-align: left; padding: 10px 20px; background-color: transparent; border: none; color: #8d9eb0; font-size: 13px; }
 QPushButton#SideQuit:hover { background-color: #34495e; color: #e74c3c; }
-QLabel#StatusRun { color: #27ae60; font-weight: bold; font-size: 13px; background-color: transparent; border: none; }
-QLabel#StatusStop { color: #e74c3c; font-weight: bold; font-size: 13px; background-color: transparent; border: none; }
-QLabel#StatusNA { color: #95a5a6; font-weight: bold; font-size: 13px; background-color: transparent; border: none; }
+QLabel#StatusRun { color: #1e8449; font-weight: bold; font-size: 11px; background-color: #eafaf1; border: 1px solid #abebc6; border-radius: 12px; padding: 0px 13px; }
+QLabel#StatusStop { color: #c0392b; font-weight: bold; font-size: 11px; background-color: #fdedec; border: 1px solid #f5b7b1; border-radius: 12px; padding: 0px 13px; }
+QLabel#StatusNA { color: #7f8c8d; font-weight: bold; font-size: 11px; background-color: #eef1f3; border: 1px solid #d5dbdb; border-radius: 12px; padding: 0px 13px; }
+QFrame#Row { background-color: transparent; border-radius: 6px; }
+QFrame#Row:hover { background-color: #f5f8fc; }
+QPushButton#BtnQuitGhost { background-color: white; border: 1px solid #f1c0bb; color: #e74c3c; }
+QPushButton#BtnQuitGhost:hover { background-color: #fdedec; border: 1px solid #e74c3c; color: #c0392b; }
 QProgressBar#SideBar { background-color: #1a252f; border: none; border-radius: 4px; color: white; text-align: center; font-size: 10px; font-weight: bold; }
 QTableWidget { background-color: white; color: #2c3e50; border: 1px solid #bdc3c7; border-radius: 5px; gridline-color: #ecf0f1; }
 QHeaderView::section { background-color: #ecf0f1; color: #2c3e50; font-weight: bold; padding: 5px; border: 1px solid #bdc3c7; }
@@ -260,9 +265,9 @@ class DashboardPage(QWidget):
         if HAS_ICONS: btn_root.setIcon(qta.icon("fa5s.folder-open", color="#3498db"))
         btn_root.clicked.connect(self.open_root_dir)
         btn_quit = QPushButton(" Quit")
-        btn_quit.setObjectName("BtnDanger")
+        btn_quit.setObjectName("BtnQuitGhost")
         btn_quit.setCursor(Qt.CursorShape.PointingHandCursor)
-        if HAS_ICONS: btn_quit.setIcon(qta.icon("fa5s.power-off", color="white"))
+        if HAS_ICONS: btn_quit.setIcon(qta.icon("fa5s.power-off", color="#e74c3c"))
         btn_quit.clicked.connect(lambda: self.window().force_quit())
         header.addWidget(btn_local)
         header.addWidget(btn_root)
@@ -275,26 +280,29 @@ class DashboardPage(QWidget):
         row_pma = QHBoxLayout()
         lbl_pma = QLabel("phpMyAdmin (MySQL/MariaDB)")
         lbl_pma.setStyleSheet("font-weight: 600; font-size: 14px; color: #2c3e50;")
-        lbl_pma.setFixedWidth(230)
+        lbl_pma.setFixedWidth(224)
         row_pma.addWidget(lbl_pma)
         self.lbl_pma_status = QLabel("...")
-        self.lbl_pma_status.setFixedWidth(130)
-        row_pma.addWidget(self.lbl_pma_status)
+        self.lbl_pma_status.setObjectName("StatusNA")
+        self.lbl_pma_status.setFixedHeight(24)
+        row_pma.addWidget(self.lbl_pma_status, 0, Qt.AlignmentFlag.AlignVCenter)
         row_pma.addStretch()
         btn_pma_open = QPushButton(" Open")
         btn_pma_open.setObjectName("BtnPrimary")
-        btn_pma_open.setFixedWidth(150)
+        btn_pma_open.setFixedWidth(92)
         if HAS_ICONS: btn_pma_open.setIcon(qta.icon("fa5s.external-link-alt", color="white"))
         btn_pma_open.clicked.connect(lambda: webbrowser.open("http://localhost/phpmyadmin"))
         self.btn_pma_setup = QPushButton(" Setup / Repair")
         self.btn_pma_setup.setObjectName("BtnGhost")
-        self.btn_pma_setup.setFixedWidth(150)
+        self.btn_pma_setup.setFixedWidth(148)
         if HAS_ICONS: self.btn_pma_setup.setIcon(qta.icon("fa5s.wrench", color="#34495e"))
         self.btn_pma_setup.clicked.connect(self.on_pma_action)
         btn_pma_setup = self.btn_pma_setup
         row_pma.addWidget(btn_pma_open)
         row_pma.addWidget(btn_pma_setup)
-        card_db.layout.addLayout(row_pma)
+        row_pma.setContentsMargins(8, 5, 8, 5)
+        row_pma_w = QFrame(); row_pma_w.setObjectName("Row"); row_pma_w.setLayout(row_pma)
+        card_db.layout.addWidget(row_pma_w)
 
         line_db = QFrame()
         line_db.setFrameShape(QFrame.Shape.HLine)
@@ -304,26 +312,28 @@ class DashboardPage(QWidget):
         row_pg = QHBoxLayout()
         lbl_pg = QLabel("pgweb (PostgreSQL)")
         lbl_pg.setStyleSheet("font-weight: 600; font-size: 14px; color: #2c3e50;")
-        lbl_pg.setFixedWidth(230)
+        lbl_pg.setFixedWidth(224)
         row_pg.addWidget(lbl_pg)
         self.lbl_pg_status = QLabel("● STOPPED")
         self.lbl_pg_status.setObjectName("StatusStop")
-        self.lbl_pg_status.setFixedWidth(130)
-        row_pg.addWidget(self.lbl_pg_status)
+        self.lbl_pg_status.setFixedHeight(24)
+        row_pg.addWidget(self.lbl_pg_status, 0, Qt.AlignmentFlag.AlignVCenter)
         row_pg.addStretch()
         self.btn_pg_toggle = QPushButton(" Start")
         self.btn_pg_toggle.setObjectName("BtnSuccess")
-        self.btn_pg_toggle.setFixedWidth(150)
+        self.btn_pg_toggle.setFixedWidth(92)
         if HAS_ICONS: self.btn_pg_toggle.setIcon(qta.icon("fa5s.play", color="white"))
         self.btn_pg_toggle.clicked.connect(self.toggle_pgweb)
         btn_pg_open = QPushButton(" Open")
         btn_pg_open.setObjectName("BtnGhost")
-        btn_pg_open.setFixedWidth(150)
+        btn_pg_open.setFixedWidth(92)
         if HAS_ICONS: btn_pg_open.setIcon(qta.icon("fa5s.external-link-alt", color="#34495e"))
         btn_pg_open.clicked.connect(lambda: webbrowser.open("http://localhost:8081"))
         row_pg.addWidget(self.btn_pg_toggle)
         row_pg.addWidget(btn_pg_open)
-        card_db.layout.addLayout(row_pg)
+        row_pg.setContentsMargins(8, 5, 8, 5)
+        row_pg_w = QFrame(); row_pg_w.setObjectName("Row"); row_pg_w.setLayout(row_pg)
+        card_db.layout.addWidget(row_pg_w)
 
         line_db3 = QFrame()
         line_db3.setFrameShape(QFrame.Shape.HLine)
@@ -333,26 +343,28 @@ class DashboardPage(QWidget):
         row_mp = QHBoxLayout()
         lbl_mp = QLabel("Mailpit (SMTP Inbox)")
         lbl_mp.setStyleSheet("font-weight: 600; font-size: 14px; color: #2c3e50;")
-        lbl_mp.setFixedWidth(230)
+        lbl_mp.setFixedWidth(224)
         row_mp.addWidget(lbl_mp)
         self.lbl_mp_status = QLabel("● STOPPED")
         self.lbl_mp_status.setObjectName("StatusStop")
-        self.lbl_mp_status.setFixedWidth(130)
-        row_mp.addWidget(self.lbl_mp_status)
+        self.lbl_mp_status.setFixedHeight(24)
+        row_mp.addWidget(self.lbl_mp_status, 0, Qt.AlignmentFlag.AlignVCenter)
         row_mp.addStretch()
         self.btn_mp_toggle = QPushButton(" Start")
         self.btn_mp_toggle.setObjectName("BtnSuccess")
-        self.btn_mp_toggle.setFixedWidth(150)
+        self.btn_mp_toggle.setFixedWidth(92)
         if HAS_ICONS: self.btn_mp_toggle.setIcon(qta.icon("fa5s.play", color="white"))
         self.btn_mp_toggle.clicked.connect(self.toggle_mailpit)
         btn_mp_open = QPushButton(" Open")
         btn_mp_open.setObjectName("BtnGhost")
-        btn_mp_open.setFixedWidth(150)
+        btn_mp_open.setFixedWidth(92)
         if HAS_ICONS: btn_mp_open.setIcon(qta.icon("fa5s.external-link-alt", color="#34495e"))
         btn_mp_open.clicked.connect(lambda: webbrowser.open(f"http://localhost:{MAILPIT_UI_PORT}"))
         row_mp.addWidget(self.btn_mp_toggle)
         row_mp.addWidget(btn_mp_open)
-        card_db.layout.addLayout(row_mp)
+        row_mp.setContentsMargins(8, 5, 8, 5)
+        row_mp_w = QFrame(); row_mp_w.setObjectName("Row"); row_mp_w.setLayout(row_mp)
+        card_db.layout.addWidget(row_mp_w)
 
         layout.addWidget(card_db)
 
@@ -385,17 +397,18 @@ class DashboardPage(QWidget):
             
             lbl_name = QLabel(display_name)
             lbl_name.setStyleSheet("font-weight: bold; font-size: 14px; color: #2c3e50;")
-            lbl_name.setFixedWidth(150)
+            lbl_name.setFixedWidth(142)
             row.addWidget(lbl_name)
+            row.addSpacing(16)
 
             lbl_status = QLabel("Checking...")
-            lbl_status.setFixedWidth(140)
-            lbl_status.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-            row.addWidget(lbl_status)
+            lbl_status.setObjectName("StatusNA")
+            lbl_status.setFixedHeight(24)
+            row.addWidget(lbl_status, 0, Qt.AlignmentFlag.AlignVCenter)
             row.addStretch()
 
             action_stack = QStackedWidget()
-            action_stack.setFixedWidth(105)
+            action_stack.setFixedWidth(95)
             
             btn_start = QPushButton(" Start")
             btn_start.setObjectName("BtnSuccess")
@@ -412,13 +425,13 @@ class DashboardPage(QWidget):
 
             btn_restart = QPushButton(" Restart")
             btn_restart.setObjectName("BtnPrimary")
-            btn_restart.setFixedWidth(110)
+            btn_restart.setFixedWidth(105)
             if HAS_ICONS: btn_restart.setIcon(qta.icon("fa5s.sync", color="white"))
             btn_restart.clicked.connect(lambda checked, s=sys_name: self.run_cmd(s, "restart"))
 
             btn_install = QPushButton(" Install")
             btn_install.setObjectName("BtnGhost")
-            btn_install.setFixedWidth(217)
+            btn_install.setFixedWidth(150)
             if HAS_ICONS: btn_install.setIcon(qta.icon("fa5s.download", color="#34495e"))
             btn_install.clicked.connect(lambda checked, s=sys_name: self.install_svc(s))
             btn_install.hide()
@@ -426,11 +439,14 @@ class DashboardPage(QWidget):
             row.addWidget(action_stack)
             row.addWidget(btn_restart)
             row.addWidget(btn_install)
-            card_svc.layout.addLayout(row)
+            row.setContentsMargins(8, 5, 8, 5)
+            row_w = QFrame(); row_w.setObjectName("Row"); row_w.setLayout(row)
+            card_svc.layout.addWidget(row_w)
 
             self.svc_widgets[sys_name] = {
                 'status': lbl_status, 'action_stack': action_stack,
-                'btn_restart': btn_restart, 'btn_install': btn_install
+                'btn_restart': btn_restart, 'btn_install': btn_install,
+                'icon': lbl_icon, 'icon_name': icon_name,
             }
             
             line = QFrame()
@@ -529,6 +545,10 @@ class DashboardPage(QWidget):
 
             lbl.style().unpolish(lbl)
             lbl.style().polish(lbl)
+
+            if HAS_ICONS:
+                tint = "#27ae60" if state == "running" else ("#bdc3c7" if state == "missing" else "#95a5a6")
+                widgets['icon'].setPixmap(qta.icon(widgets['icon_name'], color=tint).pixmap(24, 24))
 
     def install_svc(self, svc: str):
         pkg = self.svc_packages.get(svc)
@@ -2225,11 +2245,26 @@ class MainWindow(QMainWindow):
         self.global_timer.start(2000)
         self.update_sidebar_resources()
 
+    @staticmethod
+    def _load_color(v):
+        if v < 60: return "#2ecc71"
+        if v < 85: return "#f1c40f"
+        return "#e74c3c"
+
     def update_sidebar_resources(self):
         try:
-            self.side_bars["CPU"].setValue(int(psutil.cpu_percent()))
-            self.side_bars["RAM"].setValue(int(psutil.virtual_memory().percent))
-            self.side_bars["DISK"].setValue(int(psutil.disk_usage('/').percent))
+            vals = {
+                "CPU": int(psutil.cpu_percent()),
+                "RAM": int(psutil.virtual_memory().percent),
+                "DISK": int(psutil.disk_usage('/').percent),
+            }
+            for key, v in vals.items():
+                bar = self.side_bars[key]
+                bar.setValue(v)
+                c = self._load_color(v)
+                if bar.property("barColor") != c:
+                    bar.setProperty("barColor", c)
+                    bar.setStyleSheet(f"QProgressBar::chunk {{ background-color: {c}; border-radius: 4px; }}")
         except Exception as e:
             logging.warning(f"Failed to update system resources: {e}")
 
