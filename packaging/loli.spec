@@ -43,5 +43,5 @@ install -Dm0644 logo.svg       %{buildroot}%{_datadir}/icons/hicolor/scalable/ap
 %{_datadir}/icons/hicolor/scalable/apps/loli.svg
 
 %changelog
-* Sat Jun 07 2026 s4rt4 <surat.sarta@gmail.com> - 1.0.0-1
+* Sun Jun 07 2026 s4rt4 <surat.sarta@gmail.com> - 1.0.0-1
 - Initial RPM: full UI, service management, DB tools, multi-page panel.
