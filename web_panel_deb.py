@@ -7,6 +7,8 @@ import psutil
 import glob
 import tempfile
 import shlex
+import socket
+import shutil
 import logging
 from typing import Optional
 
@@ -22,11 +24,22 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QLabel, QPushButton, QFrame, QMessageBox, 
                              QStackedWidget, QTextEdit, QLineEdit, QFileDialog, QComboBox,
                              QProgressBar, QGridLayout, QCheckBox, QSystemTrayIcon, QMenu, 
-                             QScrollArea, QTableWidget, QTableWidgetItem, QHeaderView)
-from PyQt6.QtCore import QTimer, Qt, QSize
-from PyQt6.QtGui import QFont, QIcon, QAction, QColor
+                             QScrollArea, QTableWidget, QTableWidgetItem, QHeaderView, QTabWidget,
+                             QSizePolicy)
+from PyQt6.QtCore import QTimer, Qt, QSize, QThread, pyqtSignal
+from PyQt6.QtGui import QFont, QIcon, QAction, QColor, QPixmap, QPainter
+from PyQt6.QtSvg import QSvgRenderer
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOGO_PATH = os.path.join(BASE_DIR, "logo.svg")
+TRAY_ICON_PATH = os.path.join(BASE_DIR, "logo-tray.svg")
+APP_NAME = "Loli — Localhost Linux"
+APP_VERSION = "1.0.0"
+PGWEB_PORT = 8081
+MAILPIT_UI_PORT = 8025
+MAILPIT_SMTP_PORT = 1025
 
 STYLESHEET = """
 QMainWindow { background-color: #f4f6f9; }
@@ -50,13 +63,21 @@ QPushButton#BtnSuccess { background-color: #2ecc71; color: white; border: 1px so
 QPushButton#BtnSuccess:hover { background-color: #27ae60; }
 QPushButton#BtnDanger { background-color: #e74c3c; color: white; border: 1px solid #c0392b; }
 QPushButton#BtnDanger:hover { background-color: #c0392b; }
-QPushButton#BtnBig { background-color: white; border: 2px solid #3498db; color: #3498db; font-size: 14px; font-weight: bold; padding: 12px; border-radius: 8px; }
-QPushButton#BtnBig:hover { background-color: #3498db; color: white; }
-QPushButton#BtnQuit { background-color: white; border: 2px solid #e74c3c; color: #e74c3c; font-size: 14px; font-weight: bold; padding: 12px; border-radius: 8px; }
-QPushButton#BtnQuit:hover { background-color: #e74c3c; color: white; }
-QLabel#StatusRun { color: #27ae60; font-weight: bold; font-size: 13px; background-color: transparent; border: none; }
-QLabel#StatusStop { color: #e74c3c; font-weight: bold; font-size: 13px; background-color: transparent; border: none; }
-QLabel#StatusNA { color: #95a5a6; font-weight: bold; font-size: 13px; background-color: transparent; border: none; }
+QPushButton#BtnGhost { background-color: white; border: 1px solid #c4d3e0; color: #34495e; font-weight: 600; }
+QPushButton#BtnGhost:hover { background-color: #eaf2fa; border: 1px solid #3498db; color: #2980b9; }
+QLabel#PageTitle { font-size: 20px; font-weight: bold; color: #2c3e50; }
+QLabel#Hint { color: #95a5a6; font-size: 12px; }
+QLabel#Brand { color: white; font-size: 20px; font-weight: bold; }
+QLabel#BrandSub { color: #8d9eb0; font-size: 9px; font-weight: bold; letter-spacing: 2px; }
+QPushButton#SideQuit { text-align: left; padding: 10px 20px; background-color: transparent; border: none; color: #8d9eb0; font-size: 13px; }
+QPushButton#SideQuit:hover { background-color: #34495e; color: #e74c3c; }
+QLabel#StatusRun { color: #1e8449; font-weight: bold; font-size: 11px; background-color: #eafaf1; border: 1px solid #abebc6; border-radius: 12px; padding: 0px 13px; }
+QLabel#StatusStop { color: #c0392b; font-weight: bold; font-size: 11px; background-color: #fdedec; border: 1px solid #f5b7b1; border-radius: 12px; padding: 0px 13px; }
+QLabel#StatusNA { color: #7f8c8d; font-weight: bold; font-size: 11px; background-color: #eef1f3; border: 1px solid #d5dbdb; border-radius: 12px; padding: 0px 13px; }
+QFrame#Row { background-color: transparent; border-radius: 6px; }
+QFrame#Row:hover { background-color: #f5f8fc; }
+QPushButton#BtnQuitGhost { background-color: white; border: 1px solid #f1c0bb; color: #e74c3c; }
+QPushButton#BtnQuitGhost:hover { background-color: #fdedec; border: 1px solid #e74c3c; color: #c0392b; }
 QProgressBar#SideBar { background-color: #1a252f; border: none; border-radius: 4px; color: white; text-align: center; font-size: 10px; font-weight: bold; }
 QTableWidget { background-color: white; color: #2c3e50; border: 1px solid #bdc3c7; border-radius: 5px; gridline-color: #ecf0f1; }
 QHeaderView::section { background-color: #ecf0f1; color: #2c3e50; font-weight: bold; padding: 5px; border: 1px solid #bdc3c7; }
@@ -108,6 +129,109 @@ def run_root_script(script_content: str) -> bool:
         except Exception as e:
             logging.warning(f"Failed to cleanup temp file: {e}")
 
+class _Worker(QThread):
+    """Menjalankan fungsi blocking (subprocess/pkexec) di luar thread GUI agar UI tidak freeze."""
+    finished_result = pyqtSignal(object)
+
+    def __init__(self, fn):
+        super().__init__()
+        self._fn = fn
+
+    def run(self):
+        try:
+            res = self._fn()
+        except Exception as e:
+            res = e
+        self.finished_result.emit(res)
+
+def run_async(parent, fn, on_done=None):
+    """Jalankan fn() di thread terpisah; panggil on_done(hasil) di thread GUI saat selesai."""
+    if not hasattr(parent, "_workers"):
+        parent._workers = []
+    w = _Worker(fn)
+
+    def _cb(res):
+        try:
+            if on_done:
+                on_done(res)
+        finally:
+            if w in parent._workers:
+                parent._workers.remove(w)
+
+    w.finished_result.connect(_cb)
+    parent._workers.append(w)
+    w.start()
+    return w
+
+def load_logo_pixmap(size: int):
+    """Render logo.svg ke pixmap persegi penuh (tanpa terpotong seperti QIcon.pixmap)."""
+    if not os.path.exists(LOGO_PATH):
+        return None
+    try:
+        renderer = QSvgRenderer(LOGO_PATH)
+        pm = QPixmap(size, size)
+        pm.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pm)
+        renderer.render(painter)
+        painter.end()
+        return pm
+    except Exception as e:
+        logging.warning(f"Failed to render logo: {e}")
+        pm = QIcon(LOGO_PATH).pixmap(QSize(size, size))
+        return pm if not pm.isNull() else None
+
+def get_web_root() -> str:
+    try:
+        out = subprocess.run(["grep", "-m1", "-i", "DocumentRoot", "/etc/apache2/sites-available/000-default.conf"],
+                             capture_output=True, text=True, timeout=5).stdout
+        if "DocumentRoot" in out:
+            return out.split()[-1].strip().strip('"')
+    except Exception as e:
+        logging.warning(f"Failed to read DocumentRoot: {e}")
+    return "/var/www/html"
+
+def port_in_use(port: int) -> bool:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.3)
+            return s.connect_ex(("127.0.0.1", port)) == 0
+    except Exception:
+        return False
+
+def open_path(path: str):
+    try:
+        subprocess.Popen(["xdg-open", path])
+    except Exception as e:
+        logging.error(f"xdg-open failed: {e}")
+
+def open_terminal(path: str) -> bool:
+    candidates = [
+        ("ptyxis", ["-d", path]),
+        ("gnome-terminal", [f"--working-directory={path}"]),
+        ("konsole", ["--workdir", path]),
+        ("xfce4-terminal", [f"--working-directory={path}"]),
+        ("xterm", ["-e", f"cd {shlex.quote(path)} && bash"]),
+    ]
+    for term, args in candidates:
+        if shutil.which(term):
+            try:
+                subprocess.Popen([term] + args)
+                return True
+            except Exception as e:
+                logging.warning(f"Failed to open terminal {term}: {e}")
+    return False
+
+def open_editor(path: str) -> bool:
+    for ed in ("code", "codium"):
+        if shutil.which(ed):
+            try:
+                subprocess.Popen([ed, path])
+                return True
+            except Exception as e:
+                logging.warning(f"Failed to open editor {ed}: {e}")
+    open_path(path)
+    return False
+
 class Card(QFrame):
     def __init__(self, layout_type="v"):
         super().__init__()
@@ -120,53 +244,149 @@ class Card(QFrame):
 class DashboardPage(QWidget):
     def __init__(self):
         super().__init__()
+        self.pgweb_proc = None
+        self.mailpit_proc = None
         layout = QVBoxLayout()
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(15)
 
-        card_tools = Card()
-        grid_tools = QGridLayout()
-        grid_tools.setSpacing(10)
-        
+        header = QHBoxLayout()
+        title = QLabel("Dashboard", objectName="PageTitle")
+        header.addWidget(title)
+        header.addStretch()
         btn_local = QPushButton(" Open Localhost")
-        btn_local.setObjectName("BtnBig")
+        btn_local.setObjectName("BtnGhost")
+        btn_local.setCursor(Qt.CursorShape.PointingHandCursor)
         if HAS_ICONS: btn_local.setIcon(qta.icon("fa5s.globe", color="#3498db"))
         btn_local.clicked.connect(lambda: webbrowser.open("http://localhost"))
-        
-        btn_pma = QPushButton(" Open PHPMyAdmin")
-        btn_pma.setObjectName("BtnBig")
-        if HAS_ICONS: btn_pma.setIcon(qta.icon("fa5s.database", color="#3498db"))
-        btn_pma.clicked.connect(lambda: webbrowser.open("http://localhost/phpmyadmin"))
-        
-        btn_root = QPushButton(" Open Root Directory")
-        btn_root.setObjectName("BtnBig")
+        btn_root = QPushButton(" Open Root Dir")
+        btn_root.setObjectName("BtnGhost")
+        btn_root.setCursor(Qt.CursorShape.PointingHandCursor)
         if HAS_ICONS: btn_root.setIcon(qta.icon("fa5s.folder-open", color="#3498db"))
         btn_root.clicked.connect(self.open_root_dir)
-        
-        btn_quit = QPushButton(" Force Quit App")
-        btn_quit.setObjectName("BtnQuit")
+        btn_quit = QPushButton(" Quit")
+        btn_quit.setObjectName("BtnQuitGhost")
+        btn_quit.setCursor(Qt.CursorShape.PointingHandCursor)
         if HAS_ICONS: btn_quit.setIcon(qta.icon("fa5s.power-off", color="#e74c3c"))
         btn_quit.clicked.connect(lambda: self.window().force_quit())
+        header.addWidget(btn_local)
+        header.addWidget(btn_root)
+        header.addWidget(btn_quit)
+        layout.addLayout(header)
 
-        grid_tools.addWidget(btn_local, 0, 0)
-        grid_tools.addWidget(btn_pma, 0, 1)
-        grid_tools.addWidget(btn_root, 1, 0)
-        grid_tools.addWidget(btn_quit, 1, 1)
-        
-        card_tools.layout.addLayout(grid_tools)
-        layout.addWidget(card_tools)
+        card_db = Card()
+        card_db.layout.addWidget(QLabel("Database Tools", objectName="H1"))
+
+        row_pma = QHBoxLayout()
+        lbl_pma = QLabel("phpMyAdmin (MySQL/MariaDB)")
+        lbl_pma.setStyleSheet("font-weight: 600; font-size: 14px; color: #2c3e50;")
+        lbl_pma.setFixedWidth(224)
+        row_pma.addWidget(lbl_pma)
+        self.lbl_pma_status = QLabel("...")
+        self.lbl_pma_status.setObjectName("StatusNA")
+        self.lbl_pma_status.setFixedHeight(24)
+        row_pma.addWidget(self.lbl_pma_status, 0, Qt.AlignmentFlag.AlignVCenter)
+        row_pma.addStretch()
+        btn_pma_open = QPushButton(" Open")
+        btn_pma_open.setObjectName("BtnPrimary")
+        btn_pma_open.setFixedWidth(92)
+        if HAS_ICONS: btn_pma_open.setIcon(qta.icon("fa5s.external-link-alt", color="white"))
+        btn_pma_open.clicked.connect(lambda: webbrowser.open("http://localhost/phpmyadmin"))
+        self.btn_pma_setup = QPushButton(" Setup / Repair")
+        self.btn_pma_setup.setObjectName("BtnGhost")
+        self.btn_pma_setup.setFixedWidth(148)
+        if HAS_ICONS: self.btn_pma_setup.setIcon(qta.icon("fa5s.wrench", color="#34495e"))
+        self.btn_pma_setup.clicked.connect(self.on_pma_action)
+        btn_pma_setup = self.btn_pma_setup
+        row_pma.addWidget(btn_pma_open)
+        row_pma.addWidget(btn_pma_setup)
+        row_pma.setContentsMargins(8, 5, 8, 5)
+        row_pma_w = QFrame(); row_pma_w.setObjectName("Row"); row_pma_w.setLayout(row_pma)
+        card_db.layout.addWidget(row_pma_w)
+
+        line_db = QFrame()
+        line_db.setFrameShape(QFrame.Shape.HLine)
+        line_db.setStyleSheet("color: #ecf0f1;")
+        card_db.layout.addWidget(line_db)
+
+        row_pg = QHBoxLayout()
+        lbl_pg = QLabel("pgweb (PostgreSQL)")
+        lbl_pg.setStyleSheet("font-weight: 600; font-size: 14px; color: #2c3e50;")
+        lbl_pg.setFixedWidth(224)
+        row_pg.addWidget(lbl_pg)
+        self.lbl_pg_status = QLabel("● STOPPED")
+        self.lbl_pg_status.setObjectName("StatusStop")
+        self.lbl_pg_status.setFixedHeight(24)
+        row_pg.addWidget(self.lbl_pg_status, 0, Qt.AlignmentFlag.AlignVCenter)
+        row_pg.addStretch()
+        self.btn_pg_toggle = QPushButton(" Start")
+        self.btn_pg_toggle.setObjectName("BtnSuccess")
+        self.btn_pg_toggle.setFixedWidth(92)
+        if HAS_ICONS: self.btn_pg_toggle.setIcon(qta.icon("fa5s.play", color="white"))
+        self.btn_pg_toggle.clicked.connect(self.toggle_pgweb)
+        btn_pg_open = QPushButton(" Open")
+        btn_pg_open.setObjectName("BtnGhost")
+        btn_pg_open.setFixedWidth(92)
+        if HAS_ICONS: btn_pg_open.setIcon(qta.icon("fa5s.external-link-alt", color="#34495e"))
+        btn_pg_open.clicked.connect(lambda: webbrowser.open("http://localhost:8081"))
+        row_pg.addWidget(self.btn_pg_toggle)
+        row_pg.addWidget(btn_pg_open)
+        row_pg.setContentsMargins(8, 5, 8, 5)
+        row_pg_w = QFrame(); row_pg_w.setObjectName("Row"); row_pg_w.setLayout(row_pg)
+        card_db.layout.addWidget(row_pg_w)
+
+        line_db3 = QFrame()
+        line_db3.setFrameShape(QFrame.Shape.HLine)
+        line_db3.setStyleSheet("color: #ecf0f1;")
+        card_db.layout.addWidget(line_db3)
+
+        row_mp = QHBoxLayout()
+        lbl_mp = QLabel("Mailpit (SMTP Inbox)")
+        lbl_mp.setStyleSheet("font-weight: 600; font-size: 14px; color: #2c3e50;")
+        lbl_mp.setFixedWidth(224)
+        row_mp.addWidget(lbl_mp)
+        self.lbl_mp_status = QLabel("● STOPPED")
+        self.lbl_mp_status.setObjectName("StatusStop")
+        self.lbl_mp_status.setFixedHeight(24)
+        row_mp.addWidget(self.lbl_mp_status, 0, Qt.AlignmentFlag.AlignVCenter)
+        row_mp.addStretch()
+        self.btn_mp_toggle = QPushButton(" Start")
+        self.btn_mp_toggle.setObjectName("BtnSuccess")
+        self.btn_mp_toggle.setFixedWidth(92)
+        if HAS_ICONS: self.btn_mp_toggle.setIcon(qta.icon("fa5s.play", color="white"))
+        self.btn_mp_toggle.clicked.connect(self.toggle_mailpit)
+        btn_mp_open = QPushButton(" Open")
+        btn_mp_open.setObjectName("BtnGhost")
+        btn_mp_open.setFixedWidth(92)
+        if HAS_ICONS: btn_mp_open.setIcon(qta.icon("fa5s.external-link-alt", color="#34495e"))
+        btn_mp_open.clicked.connect(lambda: webbrowser.open(f"http://localhost:{MAILPIT_UI_PORT}"))
+        row_mp.addWidget(self.btn_mp_toggle)
+        row_mp.addWidget(btn_mp_open)
+        row_mp.setContentsMargins(8, 5, 8, 5)
+        row_mp_w = QFrame(); row_mp_w.setObjectName("Row"); row_mp_w.setLayout(row_mp)
+        card_db.layout.addWidget(row_mp_w)
+
+        layout.addWidget(card_db)
 
         card_svc = Card()
         card_svc.layout.addWidget(QLabel("Service Status", objectName="H1"))
         
         self.services = [
-            ("apache2", "Apache Web Server", "fa5s.server"), 
+            ("apache2", "Apache Web Server", "fa5s.server"),
             ("nginx", "Nginx Web Server", "fa5s.server"),
             ("mariadb", "MariaDB Database", "fa5s.database"),
             ("postgresql", "PostgreSQL", "fa5s.database"),
+            ("redis-server", "Redis", "fa5s.bolt"),
+            ("memcached", "Memcached", "fa5s.memory"),
             ("mongod", "MongoDB", "fa5s.database")
         ]
-        
+        # service -> nama paket apt (utk tombol Install bila belum terpasang)
+        self.svc_packages = {
+            "apache2": "apache2", "nginx": "nginx", "mariadb": "mariadb-server",
+            "postgresql": "postgresql", "redis-server": "redis-server", "memcached": "memcached",
+            "mongod": "mongodb-org",
+        }
+
         self.svc_widgets = {}
 
         for sys_name, display_name, icon_name in self.services:
@@ -177,17 +397,18 @@ class DashboardPage(QWidget):
             
             lbl_name = QLabel(display_name)
             lbl_name.setStyleSheet("font-weight: bold; font-size: 14px; color: #2c3e50;")
-            lbl_name.setFixedWidth(150)
+            lbl_name.setFixedWidth(142)
             row.addWidget(lbl_name)
+            row.addSpacing(16)
 
             lbl_status = QLabel("Checking...")
-            lbl_status.setFixedWidth(110)
-            lbl_status.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-            row.addWidget(lbl_status)
+            lbl_status.setObjectName("StatusNA")
+            lbl_status.setFixedHeight(24)
+            row.addWidget(lbl_status, 0, Qt.AlignmentFlag.AlignVCenter)
             row.addStretch()
 
             action_stack = QStackedWidget()
-            action_stack.setFixedWidth(90)
+            action_stack.setFixedWidth(95)
             
             btn_start = QPushButton(" Start")
             btn_start.setObjectName("BtnSuccess")
@@ -204,16 +425,28 @@ class DashboardPage(QWidget):
 
             btn_restart = QPushButton(" Restart")
             btn_restart.setObjectName("BtnPrimary")
-            btn_restart.setFixedWidth(90)
+            btn_restart.setFixedWidth(105)
             if HAS_ICONS: btn_restart.setIcon(qta.icon("fa5s.sync", color="white"))
             btn_restart.clicked.connect(lambda checked, s=sys_name: self.run_cmd(s, "restart"))
 
+            btn_install = QPushButton(" Install")
+            btn_install.setObjectName("BtnGhost")
+            btn_install.setFixedWidth(150)
+            if HAS_ICONS: btn_install.setIcon(qta.icon("fa5s.download", color="#34495e"))
+            btn_install.clicked.connect(lambda checked, s=sys_name: self.install_svc(s))
+            btn_install.hide()
+
             row.addWidget(action_stack)
             row.addWidget(btn_restart)
-            card_svc.layout.addLayout(row)
-            
+            row.addWidget(btn_install)
+            row.setContentsMargins(8, 5, 8, 5)
+            row_w = QFrame(); row_w.setObjectName("Row"); row_w.setLayout(row)
+            card_svc.layout.addWidget(row_w)
+
             self.svc_widgets[sys_name] = {
-                'status': lbl_status, 'action_stack': action_stack, 'btn_restart': btn_restart
+                'status': lbl_status, 'action_stack': action_stack,
+                'btn_restart': btn_restart, 'btn_install': btn_install,
+                'icon': lbl_icon, 'icon_name': icon_name,
             }
             
             line = QFrame()
@@ -243,30 +476,63 @@ class DashboardPage(QWidget):
     def open_root_dir(self):
         path = "/var/www/html"
         try:
-            out = subprocess.getoutput("grep -m 1 'DocumentRoot' /etc/apache2/sites-available/000-default.conf")
-            if "DocumentRoot" in out: path = out.split()[-1].strip()
+            out = subprocess.getoutput("grep -m 1 -i 'DocumentRoot' /etc/apache2/sites-available/000-default.conf")
+            if "DocumentRoot" in out: path = out.split()[-1].strip().strip('"')
         except Exception as e:
             logging.warning(f"Failed to get document root: {e}")
         subprocess.run(["xdg-open", path])
 
     def update_ui(self):
+        # Status DB murah (cek file + proses) -> aman di thread GUI
+        self.update_db_status()
+        # Polling systemctl berat -> jalankan di thread agar UI tidak freeze
+        if getattr(self, "_poll_running", False):
+            return
+        self._poll_running = True
+        services = list(self.services)
+
+        def work():
+            result = {}
+            for sys_name, _, _ in services:
+                exist = subprocess.run(["systemctl", "list-unit-files", f"{sys_name}.service"],
+                                       capture_output=True, timeout=10).returncode == 0
+                if not exist:
+                    result[sys_name] = "missing"
+                else:
+                    running = subprocess.run(["systemctl", "is-active", "--quiet", sys_name],
+                                             timeout=10).returncode == 0
+                    result[sys_name] = "running" if running else "stopped"
+            return result
+
+        def done(res):
+            self._poll_running = False
+            if isinstance(res, Exception):
+                logging.warning(f"Status poll failed: {res}")
+                return
+            self._apply_status(res)
+
+        run_async(self, work, done)
+
+    def _apply_status(self, status: dict):
         for sys_name, _, _ in self.services:
             widgets = self.svc_widgets[sys_name]
             lbl = widgets['status']
             action_stack = widgets['action_stack']
             btn_restart = widgets['btn_restart']
+            btn_install = widgets['btn_install']
+            state = status.get(sys_name, "missing")
 
-            is_exist = subprocess.run(["systemctl", "list-unit-files", f"{sys_name}.service"], capture_output=True).returncode == 0
-            
-            if not is_exist:
+            if state == "missing":
                 lbl.setText("○ NOT INSTALLED")
                 lbl.setObjectName("StatusNA")
                 action_stack.hide()
                 btn_restart.hide()
+                # tampilkan tombol Install bila paketnya kita kenal
+                btn_install.setVisible(sys_name in self.svc_packages)
             else:
+                btn_install.hide()
                 action_stack.show()
-                running = subprocess.run(["systemctl", "is-active", "--quiet", sys_name]).returncode == 0
-                if running:
+                if state == "running":
                     lbl.setText("● RUNNING")
                     lbl.setObjectName("StatusRun")
                     action_stack.setCurrentIndex(1)
@@ -276,9 +542,62 @@ class DashboardPage(QWidget):
                     lbl.setObjectName("StatusStop")
                     action_stack.setCurrentIndex(0)
                     btn_restart.hide()
-            
+
             lbl.style().unpolish(lbl)
             lbl.style().polish(lbl)
+
+            if HAS_ICONS:
+                tint = "#27ae60" if state == "running" else ("#bdc3c7" if state == "missing" else "#95a5a6")
+                widgets['icon'].setPixmap(qta.icon(widgets['icon_name'], color=tint).pixmap(24, 24))
+
+    def install_svc(self, svc: str):
+        pkg = self.svc_packages.get(svc)
+        if not pkg:
+            return
+        # MongoDB tidak ada di repo Debian -> daftarkan repo resmi MongoDB dulu (apt)
+        if svc == "mongod":
+            self.console.append("\n> setup repo MongoDB + apt install mongodb-org...")
+            script = (
+                "set -e\n"
+                "export DEBIAN_FRONTEND=noninteractive\n"
+                "apt-get install -y gnupg curl\n"
+                ". /etc/os-release\n"
+                "curl -fsSL https://pgp.mongodb.com/server-8.0.asc | "
+                "gpg -o /usr/share/keyrings/mongodb-server-8.0.gpg --dearmor --yes\n"
+                "echo \"deb [ signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] "
+                "https://repo.mongodb.org/apt/debian ${VERSION_CODENAME}/mongodb-org/8.0 main\" "
+                "> /etc/apt/sources.list.d/mongodb-org-8.0.list\n"
+                "apt-get update\n"
+                "apt-get install -y mongodb-org\n"
+            )
+
+            def done_mongo(ok):
+                self.console.append("[SUCCESS] mongodb-org terpasang." if ok is True
+                                    else "[ERROR] gagal install MongoDB (lihat dialog/izin).")
+                self.console.verticalScrollBar().setValue(self.console.verticalScrollBar().maximum())
+                QTimer.singleShot(500, self.update_ui)
+
+            run_async(self, lambda: run_root_script(script), done_mongo)
+            return
+
+        self.console.append(f"\n> apt install {pkg}...")
+
+        def work():
+            return subprocess.run(["pkexec", "sh", "-c",
+                                   f"apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y {shlex.quote(pkg)}"],
+                                  capture_output=True, text=True, timeout=600).returncode
+
+        def done(rc):
+            if rc == 0:
+                self.console.append(f"[SUCCESS] {pkg} terpasang.")
+            elif isinstance(rc, Exception):
+                self.console.append(f"[EXCEPTION] {rc}")
+            else:
+                self.console.append(f"[ERROR] gagal install {pkg} (code {rc})")
+            self.console.verticalScrollBar().setValue(self.console.verticalScrollBar().maximum())
+            QTimer.singleShot(500, self.update_ui)
+
+        run_async(self, work, done)
 
     def run_cmd(self, svc: str, action: str):
         if action == "start":
@@ -292,30 +611,423 @@ class DashboardPage(QWidget):
                 return
 
         self.console.append(f"\n> systemctl {action} {svc}...")
-        QApplication.processEvents()
 
-        try:
-            res = subprocess.run(["pkexec", "systemctl", action, svc], capture_output=True, text=True, timeout=30)
-            if res.returncode == 0:
-                self.console.append(f"[SUCCESS] {svc} berhasil di-{action}.")
+        def work():
+            res = subprocess.run(["pkexec", "systemctl", action, svc], capture_output=True, text=True, timeout=120)
+            detail = ""
+            if res.returncode != 0:
+                try:
+                    log_res = subprocess.run(["journalctl", "-u", svc, "-n", "15", "--no-pager"], capture_output=True, text=True, timeout=10)
+                    detail = log_res.stdout or ""
+                except Exception:
+                    pass
+            return (res.returncode, detail)
+
+        def done(r):
+            if isinstance(r, subprocess.TimeoutExpired):
+                self.console.append(f"[TIMEOUT] Operasi {action} memakan waktu terlalu lama")
+            elif isinstance(r, Exception):
+                self.console.append(f"[EXCEPTION] {str(r)}")
+                logging.error(f"Error in run_cmd: {r}")
             else:
-                self.console.append(f"[ERROR] systemctl gagal (Code {res.returncode})")
-                log_res = subprocess.run(["journalctl", "-u", svc, "-n", "15", "--no-pager"], capture_output=True, text=True, timeout=10)
-                if log_res.stdout:
-                    self.console.append("--- [LOG DETAIL] ---")
-                    self.console.append(log_res.stdout.strip())
-                    self.console.append("--------------------")
-        except subprocess.TimeoutExpired:
-            self.console.append(f"[TIMEOUT] Operasi {action} memakan waktu terlalu lama")
-        except Exception as e:
-            self.console.append(f"[EXCEPTION] {str(e)}")
-            logging.error(f"Error in run_cmd: {e}")
+                rc, detail = r
+                if rc == 0:
+                    self.console.append(f"[SUCCESS] {svc} berhasil di-{action}.")
+                else:
+                    self.console.append(f"[ERROR] systemctl gagal (Code {rc})")
+                    if detail:
+                        self.console.append("--- [LOG DETAIL] ---")
+                        self.console.append(detail.strip())
+                        self.console.append("--------------------")
+            self.console.verticalScrollBar().setValue(self.console.verticalScrollBar().maximum())
+            QTimer.singleShot(500, self.update_ui)
 
-        self.console.verticalScrollBar().setValue(self.console.verticalScrollBar().maximum())
-        QTimer.singleShot(500, self.update_ui)
+        run_async(self, work, done)
 
     def check_svc(self, svc: str) -> bool:
-        return subprocess.run(["systemctl", "is-active", "--quiet", svc]).returncode == 0
+        try:
+            return subprocess.run(["systemctl", "is-active", "--quiet", svc], timeout=5).returncode == 0
+        except Exception:
+            return False
+
+    def update_db_status(self):
+        # phpMyAdmin: 3 state -> belum diunduh / belum setup / configured
+        pma_present = os.path.exists(os.path.join(BASE_DIR, "phpmyadmin", "index.php"))
+        if not pma_present:
+            self.lbl_pma_status.setText("○ NOT INSTALLED")
+            self.lbl_pma_status.setObjectName("StatusNA")
+            self.btn_pma_setup.setText(" Download")
+            if HAS_ICONS: self.btn_pma_setup.setIcon(qta.icon("fa5s.download", color="#34495e"))
+        elif os.path.exists("/etc/apache2/conf-enabled/phpmyadmin.conf") or os.path.exists("/etc/apache2/conf-available/phpmyadmin.conf"):
+            self.lbl_pma_status.setText("● CONFIGURED")
+            self.lbl_pma_status.setObjectName("StatusRun")
+            self.btn_pma_setup.setText(" Setup / Repair")
+            if HAS_ICONS: self.btn_pma_setup.setIcon(qta.icon("fa5s.wrench", color="#34495e"))
+        else:
+            self.lbl_pma_status.setText("○ NOT SET UP")
+            self.lbl_pma_status.setObjectName("StatusNA")
+            self.btn_pma_setup.setText(" Setup / Repair")
+            if HAS_ICONS: self.btn_pma_setup.setIcon(qta.icon("fa5s.wrench", color="#34495e"))
+        self.lbl_pma_status.style().unpolish(self.lbl_pma_status)
+        self.lbl_pma_status.style().polish(self.lbl_pma_status)
+
+        # pgweb: running (port) / belum diunduh / stopped
+        pg_bin = os.path.join(BASE_DIR, "pgweb_linux_amd64")
+        if self._pgweb_running():
+            self.lbl_pg_status.setText("● RUNNING")
+            self.lbl_pg_status.setObjectName("StatusRun")
+            self.btn_pg_toggle.setText(" Stop")
+            self.btn_pg_toggle.setObjectName("BtnDanger")
+            if HAS_ICONS: self.btn_pg_toggle.setIcon(qta.icon("fa5s.stop", color="white"))
+        elif not os.path.exists(pg_bin):
+            self.lbl_pg_status.setText("○ NOT INSTALLED")
+            self.lbl_pg_status.setObjectName("StatusNA")
+            self.btn_pg_toggle.setText(" Download")
+            self.btn_pg_toggle.setObjectName("BtnPrimary")
+            if HAS_ICONS: self.btn_pg_toggle.setIcon(qta.icon("fa5s.download", color="white"))
+        else:
+            self.lbl_pg_status.setText("● STOPPED")
+            self.lbl_pg_status.setObjectName("StatusStop")
+            self.btn_pg_toggle.setText(" Start")
+            self.btn_pg_toggle.setObjectName("BtnSuccess")
+            if HAS_ICONS: self.btn_pg_toggle.setIcon(qta.icon("fa5s.play", color="white"))
+        for w in (self.lbl_pg_status, self.btn_pg_toggle):
+            w.style().unpolish(w)
+            w.style().polish(w)
+
+        # mailpit: running (port) / belum diunduh / stopped
+        mp_bin = os.path.join(BASE_DIR, "mailpit")
+        if port_in_use(MAILPIT_UI_PORT):
+            self.lbl_mp_status.setText("● RUNNING")
+            self.lbl_mp_status.setObjectName("StatusRun")
+            self.btn_mp_toggle.setText(" Stop")
+            self.btn_mp_toggle.setObjectName("BtnDanger")
+            if HAS_ICONS: self.btn_mp_toggle.setIcon(qta.icon("fa5s.stop", color="white"))
+        elif not os.path.exists(mp_bin):
+            self.lbl_mp_status.setText("○ NOT INSTALLED")
+            self.lbl_mp_status.setObjectName("StatusNA")
+            self.btn_mp_toggle.setText(" Download")
+            self.btn_mp_toggle.setObjectName("BtnPrimary")
+            if HAS_ICONS: self.btn_mp_toggle.setIcon(qta.icon("fa5s.download", color="white"))
+        else:
+            self.lbl_mp_status.setText("● STOPPED")
+            self.lbl_mp_status.setObjectName("StatusStop")
+            self.btn_mp_toggle.setText(" Start")
+            self.btn_mp_toggle.setObjectName("BtnSuccess")
+            if HAS_ICONS: self.btn_mp_toggle.setIcon(qta.icon("fa5s.play", color="white"))
+        for w in (self.lbl_mp_status, self.btn_mp_toggle):
+            w.style().unpolish(w)
+            w.style().polish(w)
+
+    def toggle_mailpit(self):
+        mp_bin = os.path.join(BASE_DIR, "mailpit")
+        if port_in_use(MAILPIT_UI_PORT):
+            self.stop_mailpit()
+        elif not os.path.exists(mp_bin):
+            self.download_mailpit()
+        else:
+            self.start_mailpit()
+
+    def download_mailpit(self):
+        self.btn_mp_toggle.setEnabled(False)
+        self.btn_mp_toggle.setText(" Downloading...")
+        url = "https://github.com/axllent/mailpit/releases/latest/download/mailpit-linux-amd64.tar.gz"
+        dest = BASE_DIR
+
+        def work():
+            tar = os.path.join(dest, "_mailpit.tar.gz")
+            subprocess.run(["curl", "-fL", "-o", tar, url], check=True, timeout=180)
+            subprocess.run(["tar", "-xzf", tar, "-C", dest, "mailpit"], check=True, timeout=60)
+            os.chmod(os.path.join(dest, "mailpit"), 0o755)
+            try: os.remove(tar)
+            except Exception: pass
+            return True
+
+        def done(res):
+            self.btn_mp_toggle.setEnabled(True)
+            if res is True:
+                QMessageBox.information(self, "Mailpit", "Mailpit berhasil diunduh. Klik Start untuk menjalankan.")
+            else:
+                QMessageBox.critical(self, "Error", f"Gagal mengunduh Mailpit:\n{res}")
+            self.update_db_status()
+
+        run_async(self, work, done)
+
+    def start_mailpit(self):
+        if port_in_use(MAILPIT_UI_PORT):
+            webbrowser.open(f"http://localhost:{MAILPIT_UI_PORT}")
+            self.update_db_status()
+            return
+        binary = os.path.join(BASE_DIR, "mailpit")
+        if not os.path.exists(binary):
+            self.download_mailpit()
+            return
+        try:
+            os.chmod(binary, 0o755)
+            self._mailpit_log = tempfile.NamedTemporaryFile(mode='w+', suffix='.log', prefix='mailpit-', delete=False)
+            self.mailpit_proc = subprocess.Popen(
+                [binary, "--listen", f"127.0.0.1:{MAILPIT_UI_PORT}", "--smtp", f"127.0.0.1:{MAILPIT_SMTP_PORT}"],
+                stdout=subprocess.DEVNULL, stderr=self._mailpit_log)
+        except Exception as e:
+            logging.error(f"Failed to start mailpit: {e}")
+            QMessageBox.critical(self, "Error", f"Gagal menjalankan Mailpit: {str(e)}")
+            return
+        QTimer.singleShot(1000, self._check_mailpit_started)
+        self.update_db_status()
+
+    def _check_mailpit_started(self):
+        proc = self.mailpit_proc
+        if proc is not None and proc.poll() is not None:
+            err = ""
+            try:
+                lg = getattr(self, "_mailpit_log", None)
+                if lg is not None:
+                    lg.flush()
+                    with open(lg.name) as f:
+                        err = f.read()
+            except Exception:
+                pass
+            self.mailpit_proc = None
+            msg = (err.strip().splitlines() or ["proses berhenti tanpa pesan"])[-1]
+            QMessageBox.critical(self, "Mailpit gagal start", f"Mailpit berhenti:\n\n{msg}")
+        elif port_in_use(MAILPIT_UI_PORT):
+            webbrowser.open(f"http://localhost:{MAILPIT_UI_PORT}")
+        self.update_db_status()
+
+    def stop_mailpit(self):
+        if self.mailpit_proc is not None and self.mailpit_proc.poll() is None:
+            try:
+                self.mailpit_proc.terminate()
+                self.mailpit_proc.wait(timeout=5)
+            except Exception:
+                try: self.mailpit_proc.kill()
+                except Exception: pass
+        self.mailpit_proc = None
+        if port_in_use(MAILPIT_UI_PORT):
+            try:
+                subprocess.run(["pkill", "-f", f"{BASE_DIR}/mailpit"], timeout=5)
+            except Exception as e:
+                logging.warning(f"Failed to pkill mailpit: {e}")
+        self.update_db_status()
+
+    def on_pma_action(self):
+        # Tombol dinamis: Download bila belum ada, selain itu Setup/Repair
+        if not os.path.exists(os.path.join(BASE_DIR, "phpmyadmin", "index.php")):
+            self.download_phpmyadmin()
+        else:
+            self.setup_phpmyadmin()
+
+    def download_phpmyadmin(self):
+        self.btn_pma_setup.setEnabled(False)
+        self.btn_pma_setup.setText(" Downloading...")
+
+        def work():
+            import json, urllib.request, zipfile
+            meta = json.loads(urllib.request.urlopen(
+                "https://www.phpmyadmin.net/home_page/version.json", timeout=30).read().decode())
+            ver = meta.get("version")
+            if not ver:
+                raise RuntimeError("tidak bisa mendeteksi versi phpMyAdmin")
+            url = f"https://files.phpmyadmin.net/phpMyAdmin/{ver}/phpMyAdmin-{ver}-all-languages.zip"
+            zpath = os.path.join(BASE_DIR, "_pma.zip")
+            subprocess.run(["curl", "-fL", "-o", zpath, url], check=True, timeout=360)
+            with zipfile.ZipFile(zpath) as z:
+                z.extractall(BASE_DIR)
+            extracted = os.path.join(BASE_DIR, f"phpMyAdmin-{ver}-all-languages")
+            target = os.path.join(BASE_DIR, "phpmyadmin")
+            if os.path.isdir(extracted) and not os.path.exists(target):
+                shutil.move(extracted, target)
+            try: os.remove(zpath)
+            except Exception: pass
+            return ver
+
+        def done(res):
+            self.btn_pma_setup.setEnabled(True)
+            if isinstance(res, str):
+                QMessageBox.information(self, "phpMyAdmin",
+                    f"phpMyAdmin {res} berhasil diunduh.\nKlik 'Setup / Repair' untuk konfigurasi.")
+            else:
+                QMessageBox.critical(self, "Error", f"Gagal mengunduh phpMyAdmin:\n{res}")
+            self.update_db_status()
+
+        run_async(self, work, done)
+
+    def setup_phpmyadmin(self):
+        import secrets
+        pma = os.path.join(BASE_DIR, "phpmyadmin")
+        if not os.path.exists(os.path.join(pma, "index.php")):
+            QMessageBox.critical(self, "Error", f"phpMyAdmin tidak ditemukan di:\n{pma}")
+            return
+
+        secret = secrets.token_hex(16)
+        config = (
+            "<?php\n"
+            "declare(strict_types=1);\n"
+            f"$cfg['blowfish_secret'] = '{secret}';\n"
+            "$i = 0;\n"
+            "$i++;\n"
+            "$cfg['Servers'][$i]['auth_type'] = 'cookie';\n"
+            "$cfg['Servers'][$i]['host'] = '127.0.0.1';\n"
+            "$cfg['Servers'][$i]['compress'] = false;\n"
+            "$cfg['Servers'][$i]['AllowNoPassword'] = true;\n"
+            f"$cfg['TempDir'] = '{pma}/tmp';\n"
+        )
+
+        tmp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.php', delete=False) as tf:
+                tf.write(config)
+                tmp_path = tf.name
+        except Exception as e:
+            logging.error(f"Failed to write phpMyAdmin config: {e}")
+            QMessageBox.critical(self, "Error", "Gagal menyiapkan config phpMyAdmin.")
+            return
+
+        pma_q = shlex.quote(pma)
+        tmp_q = shlex.quote(tmp_path)
+        script = (
+            f"PMA={pma_q}\n"
+            f"cp {tmp_q} \"$PMA/config.inc.php\"\n"
+            "mkdir -p \"$PMA/tmp\"\n"
+            "cat << 'EOF' > /etc/apache2/conf-available/phpmyadmin.conf\n"
+            f"Alias /phpmyadmin {pma}\n"
+            f"<Directory {pma}>\n"
+            "    Options FollowSymLinks\n"
+            "    DirectoryIndex index.php\n"
+            "    AllowOverride All\n"
+            "    Require all granted\n"
+            "</Directory>\n"
+            "EOF\n"
+            "a2enconf phpmyadmin || true\n"
+            "chown -R www-data:www-data \"$PMA\"\n"
+            "chmod 1777 \"$PMA/tmp\"\n"
+            "systemctl restart apache2\n"
+        )
+
+        def work():
+            return run_root_script(script)
+
+        def done(ok):
+            if tmp_path and os.path.exists(tmp_path):
+                try: os.remove(tmp_path)
+                except Exception: pass
+            if ok is True:
+                QMessageBox.information(self, "phpMyAdmin", "phpMyAdmin siap diakses di:\nhttp://localhost/phpmyadmin")
+                webbrowser.open("http://localhost/phpmyadmin")
+            else:
+                QMessageBox.critical(self, "Error", "Gagal melakukan setup phpMyAdmin.")
+            self.update_db_status()
+
+        run_async(self, work, done)
+
+    def _pgweb_running(self):
+        # Berbasis port: terdeteksi walau prosesnya orphan dari sesi sebelumnya
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(0.3)
+                return s.connect_ex(("127.0.0.1", PGWEB_PORT)) == 0
+        except Exception:
+            return False
+
+    def toggle_pgweb(self):
+        if self._pgweb_running():
+            self.stop_pgweb()
+        elif not os.path.exists(os.path.join(BASE_DIR, "pgweb_linux_amd64")):
+            self.download_pgweb()
+        else:
+            self.start_pgweb()
+
+    def download_pgweb(self):
+        self.btn_pg_toggle.setEnabled(False)
+        self.btn_pg_toggle.setText(" Downloading...")
+        url = "https://github.com/sosedoff/pgweb/releases/latest/download/pgweb_linux_amd64.zip"
+
+        def work():
+            import zipfile
+            zpath = os.path.join(BASE_DIR, "_pgweb.zip")
+            subprocess.run(["curl", "-fL", "-o", zpath, url], check=True, timeout=240)
+            with zipfile.ZipFile(zpath) as z:
+                member = next((n for n in z.namelist() if "pgweb" in n.lower() and not n.endswith("/")), None)
+                if not member:
+                    raise RuntimeError("binary pgweb tidak ditemukan di arsip")
+                with z.open(member) as src, open(os.path.join(BASE_DIR, "pgweb_linux_amd64"), "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+            os.chmod(os.path.join(BASE_DIR, "pgweb_linux_amd64"), 0o755)
+            try: os.remove(zpath)
+            except Exception: pass
+            return True
+
+        def done(res):
+            self.btn_pg_toggle.setEnabled(True)
+            if res is True:
+                QMessageBox.information(self, "pgweb", "pgweb berhasil diunduh. Klik Start untuk menjalankan.")
+            else:
+                QMessageBox.critical(self, "Error", f"Gagal mengunduh pgweb:\n{res}")
+            self.update_db_status()
+
+        run_async(self, work, done)
+
+    def start_pgweb(self):
+        if self._pgweb_running():
+            # Sudah berjalan (mis. instance lama) -> jangan spawn lagi, cukup buka
+            webbrowser.open(f"http://localhost:{PGWEB_PORT}")
+            self.update_db_status()
+            return
+
+        binary = os.path.join(BASE_DIR, "pgweb_linux_amd64")
+        if not os.path.exists(binary):
+            QMessageBox.critical(self, "Error", f"Binary pgweb tidak ditemukan di:\n{binary}")
+            return
+        try:
+            os.chmod(binary, 0o755)
+            # stderr ke file (bukan PIPE) supaya buffer tidak penuh & error bisa dibaca jika gagal
+            self._pgweb_log = tempfile.NamedTemporaryFile(mode='w+', suffix='.log', prefix='pgweb-', delete=False)
+            self.pgweb_proc = subprocess.Popen(
+                [binary, "--bind", "127.0.0.1", "--listen", str(PGWEB_PORT), "--sessions"],
+                stdout=subprocess.DEVNULL, stderr=self._pgweb_log)
+        except Exception as e:
+            logging.error(f"Failed to start pgweb: {e}")
+            QMessageBox.critical(self, "Error", f"Gagal menjalankan pgweb: {str(e)}")
+            return
+        # Cek setelah jeda: kalau proses sudah mati, tampilkan errornya
+        QTimer.singleShot(1000, self._check_pgweb_started)
+        self.update_db_status()
+
+    def _check_pgweb_started(self):
+        proc = self.pgweb_proc
+        if proc is not None and proc.poll() is not None:
+            err = ""
+            try:
+                log_path = getattr(self, "_pgweb_log", None)
+                if log_path is not None:
+                    log_path.flush()
+                    with open(log_path.name) as f:
+                        err = f.read()
+            except Exception:
+                pass
+            self.pgweb_proc = None
+            msg = (err.strip().splitlines() or ["proses berhenti tanpa pesan"])[-1]
+            QMessageBox.critical(self, "pgweb gagal start", f"pgweb berhenti:\n\n{msg}")
+        elif self._pgweb_running():
+            webbrowser.open(f"http://localhost:{PGWEB_PORT}")
+        self.update_db_status()
+
+    def stop_pgweb(self):
+        if self.pgweb_proc is not None and self.pgweb_proc.poll() is None:
+            try:
+                self.pgweb_proc.terminate()
+                self.pgweb_proc.wait(timeout=5)
+            except Exception:
+                try: self.pgweb_proc.kill()
+                except Exception: pass
+        self.pgweb_proc = None
+        # Bersihkan juga instance orphan yang masih memegang port
+        if self._pgweb_running():
+            try:
+                subprocess.run(["pkill", "-f", "pgweb_linux_amd64"], timeout=5)
+            except Exception as e:
+                logging.warning(f"Failed to pkill pgweb: {e}")
+        self.update_db_status()
 
 class SniperPage(QWidget):
     def __init__(self):
@@ -485,16 +1197,16 @@ class PrefsPage(QWidget):
 
     def load_current_settings(self):
         try:
-            out = subprocess.getoutput("grep -m 1 'DocumentRoot' /etc/apache2/sites-available/000-default.conf")
-            if "DocumentRoot" in out: self.inp_dir.setText(out.split()[-1].strip())
+            out = subprocess.getoutput("grep -m 1 -i 'DocumentRoot' /etc/apache2/sites-available/000-default.conf")
+            if "DocumentRoot" in out: self.inp_dir.setText(out.split()[-1].strip().strip('"'))
         except Exception as e:
             logging.warning(f"Failed to load document root: {e}")
 
         try:
             if "Listen" in (ap := subprocess.getoutput("grep -m 1 '^Listen' /etc/apache2/ports.conf")): self.ports["apache2"].setText(ap.split()[-1].strip())
-            if "listen" in (ng := subprocess.getoutput("grep -m 1 'listen' /etc/nginx/sites-available/default")): self.ports["nginx"].setText(ng.replace('listen','').replace(';','').strip().split()[0])
-            if "port" in (ma := subprocess.getoutput("grep -m 1 '^port' /etc/mysql/mariadb.conf.d/50-server.cnf")): self.ports["mariadb"].setText(ma.split('=')[-1].strip())
-            if "port" in (pg := subprocess.getoutput("grep -m 1 '^port' /etc/postgresql/*/main/postgresql.conf")): self.ports["postgresql"].setText(pg.split('=')[-1].strip())
+            if "listen" in (ng := subprocess.getoutput("grep -m 1 'listen' /etc/nginx/nginx.conf")): self.ports["nginx"].setText(ng.replace('listen','').replace(';','').strip().split()[0])
+            if "port" in (ma := subprocess.getoutput("grep -m 1 -h '^port' /etc/mysql/mariadb.conf.d/50-server.cnf")): self.ports["mariadb"].setText(ma.split('=')[-1].strip())
+            if "port" in (pg := subprocess.getoutput("grep -m 1 -h '^port' /etc/postgresql/*/main/postgresql.conf")): self.ports["postgresql"].setText(pg.split('=')[-1].strip())
             if "port" in (mg := subprocess.getoutput("grep -m 1 '^  port:' /etc/mongod.conf")): self.ports["mongod"].setText(mg.split(':')[-1].strip())
         except Exception as e:
             logging.warning(f"Failed to load port settings: {e}")
@@ -517,34 +1229,37 @@ class PrefsPage(QWidget):
         
         s = ""
         php_ver = subprocess.getoutput("php -r \"echo PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;\" 2>/dev/null")
-        if not re.match(r"^\d+\.\d+$", php_ver): php_ver = "8.2"
+        if not re.match(r"^\d+\.\d+$", php_ver): php_ver = "8.4"
+
+        p_ng = self.ports["nginx"].text()
 
         if ndir:
             ndir_escaped = shlex.quote(ndir)
             s += f"sed -i 's|DocumentRoot .*|DocumentRoot {ndir_escaped}|g' /etc/apache2/sites-available/000-default.conf\n"
             s += f"cat << 'EOF' > /etc/apache2/conf-available/custom-panel-dir.conf\n<Directory {ndir_escaped}>\n    Options Indexes FollowSymLinks\n    AllowOverride All\n    Require all granted\n</Directory>\nEOF\n"
             s += "a2enconf custom-panel-dir || true\n"
-            p_ng = self.ports["nginx"].text()
             if p_ng and validate_port(p_ng):
                 s += f"if [ -d /etc/nginx/sites-available ]; then\ncat << 'EOF' > /etc/nginx/sites-available/default\nserver {{\n    listen {p_ng} default_server;\n    root {ndir_escaped};\n    index index.php index.html index.htm;\n    server_name _;\n    location / {{ try_files $uri $uri/ =404; }}\n    location ~ \\.php$ {{\n        include snippets/fastcgi-php.conf;\n        fastcgi_pass unix:/run/php/php{php_ver}-fpm.sock;\n    }}\n}}\nEOF\nfi\n"
             if ndir.startswith("/home/"):
                 user_home = "/".join(ndir.split("/")[:3])
                 user_home_escaped = shlex.quote(user_home)
-                s += f"chmod +x {user_home_escaped}\nchown -R $USER:$USER {ndir_escaped} || true\nchmod -R 755 {ndir_escaped} || true\n"
+                s += f"chmod +x {user_home_escaped}\nchown -R www-data:www-data {ndir_escaped} || true\nchmod -R 755 {ndir_escaped} || true\n"
 
         if p_ap := self.ports["apache2"].text():
             if validate_port(p_ap):
-                s += f"sed -i 's/^Listen .*/Listen {p_ap}/g' /etc/apache2/ports.conf\nsed -i -E 's/<VirtualHost \\*:.*>/<VirtualHost \\*:{p_ap}>/g' /etc/apache2/sites-available/000-default.conf\nsystemctl restart apache2 || true\n"
+                s += f"sed -i 's/^Listen .*/Listen {p_ap}/g' /etc/apache2/ports.conf\n"
+                s += f"sed -i -E 's/<VirtualHost \\*:.*>/<VirtualHost *:{p_ap}>/g' /etc/apache2/sites-available/000-default.conf\n"
+                s += "systemctl restart apache2 || true\n"
         if p_ma := self.ports["mariadb"].text():
             if validate_port(p_ma):
-                s += f"sed -i -E 's/^port\s*=.*/port = {p_ma}/g' /etc/mysql/mariadb.conf.d/50-server.cnf\nsystemctl restart mariadb || true\n"
+                s += f"sed -i -E 's/^port\\s*=.*/port = {p_ma}/g' /etc/mysql/mariadb.conf.d/50-server.cnf\nsystemctl restart mariadb || true\n"
         if p_pg := self.ports["postgresql"].text():
             if validate_port(p_pg):
                 s += f"sed -i -E 's/^#?port = [0-9]+/port = {p_pg}/g' /etc/postgresql/*/main/postgresql.conf\nsystemctl restart postgresql || true\n"
         if p_mg := self.ports["mongod"].text():
             if validate_port(p_mg):
                 s += f"sed -i -E 's/^  port: [0-9]+/  port: {p_mg}/g' /etc/mongod.conf\nsystemctl restart mongod || true\n"
-            
+
         if ndir or p_ng: s += "systemctl restart nginx || true\n"
 
         if run_root_script(s): 
@@ -553,9 +1268,10 @@ class PrefsPage(QWidget):
             QMessageBox.critical(self, "Error", "Gagal menerapkan konfigurasi.")
 
     def enable_ssl(self):
-        if run_root_script("a2enmod ssl && a2ensite default-ssl && systemctl restart apache2"): 
+        # Debian: aktifkan modul ssl + default-ssl vhost
+        if run_root_script("a2enmod ssl && a2ensite default-ssl && systemctl restart apache2"):
             QMessageBox.information(self, "SSL Enabled", "SSL Berhasil diaktifkan!")
-        else: 
+        else:
             QMessageBox.critical(self, "Error", "Gagal mengaktifkan SSL.")
 
     def setup_mailcatcher(self):
@@ -624,8 +1340,16 @@ class PhpPage(QWidget):
         QTimer.singleShot(500, self.check_status)
 
     def populate_php(self):
-        try: 
-            self.combo_php.addItems(sorted([d for d in os.listdir('/etc/php/') if d[0].isdigit()]))
+        # Debian: bisa terpasang banyak versi di /etc/php/<ver>
+        try:
+            vers = sorted(
+                (os.path.basename(p) for p in glob.glob("/etc/php/*") if re.match(r'^\d+\.\d+$', os.path.basename(p))),
+                key=lambda v: [int(x) for x in v.split('.')]
+            )
+            if vers:
+                self.combo_php.addItems(vers)
+            else:
+                self.combo_php.addItem("N/A")
         except Exception as e:
             self.combo_php.addItem("N/A")
             logging.warning(f"Failed to populate PHP versions: {e}")
@@ -633,24 +1357,38 @@ class PhpPage(QWidget):
     def switch_php(self):
         target = self.combo_php.currentText()
         if target == "N/A": return
-        
+
         if not re.match(r'^\d+\.\d+$', target):
             QMessageBox.critical(self, "Error", "Versi PHP tidak valid!")
             return
-            
-        script = f"update-alternatives --set php /usr/bin/php{target} || true\nif command -v a2dismod &> /dev/null; then\na2dismod php* || true\na2enmod php{target} || true\nsystemctl restart apache2 || true\nfi\nsystemctl stop php*-fpm || true\nsystemctl start php{target}-fpm || true\nsystemctl enable php{target}-fpm || true\nif [ -f /etc/nginx/sites-available/default ]; then\nsed -i -E 's/fastcgi_pass unix:\/run\/php\/php[0-9.]+-fpm\\.sock;/fastcgi_pass unix:\/run\/php\/php{target}-fpm.sock;/g' /etc/nginx/sites-available/default\nsystemctl restart nginx || true\nfi\n"
+
+        # Debian: pindahkan CLI (update-alternatives), modul Apache (a2enmod), FPM, dan socket Nginx
+        script = (
+            f"update-alternatives --set php /usr/bin/php{target} || true\n"
+            "if command -v a2dismod >/dev/null 2>&1; then\n"
+            "a2dismod php* 2>/dev/null || true\n"
+            f"a2enmod php{target} 2>/dev/null || true\n"
+            "systemctl restart apache2 || true\n"
+            "fi\n"
+            "systemctl stop php*-fpm 2>/dev/null || true\n"
+            f"systemctl enable --now php{target}-fpm || true\n"
+            "if [ -f /etc/nginx/sites-available/default ]; then\n"
+            f"sed -i -E 's#fastcgi_pass unix:/run/php/php[0-9.]+-fpm\\.sock;#fastcgi_pass unix:/run/php/php{target}-fpm.sock;#g' /etc/nginx/sites-available/default\n"
+            "systemctl restart nginx || true\n"
+            "fi\n"
+        )
         if run_root_script(script):
             QMessageBox.information(self, "Berhasil", f"PHP {target} sekarang aktif untuk Apache & Nginx!")
             self.check_status()
-        else: 
+        else:
             QMessageBox.critical(self, "Error", "Gagal berpindah versi PHP.")
 
     def check_status(self):
         try:
-            ver = subprocess.check_output(["php", "-r", "echo PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;"], text=True, timeout=5)
+            ver = subprocess.check_output(["php", "-r", "echo PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;"], text=True, timeout=5).strip()
             self.curr_ver = ver
             active = os.listdir(f"/etc/php/{ver}/cli/conf.d/")
-            for ext, chk in self.checks.items(): 
+            for ext, chk in self.checks.items():
                 chk.setChecked(any(ext in f for f in active))
         except Exception as e:
             logging.warning(f"Failed to check PHP status: {e}")
@@ -658,13 +1396,19 @@ class PhpPage(QWidget):
     def toggle_ext(self):
         chk = self.sender()
         ext = chk.text()
-        ver = getattr(self, 'curr_ver', '8.2')
+        ver = getattr(self, 'curr_ver', None) or (self.combo_php.currentText() if re.match(r'^\d+\.\d+$', self.combo_php.currentText()) else "8.2")
         act = "phpenmod" if chk.isChecked() else "phpdismod"
         try:
-            subprocess.run(["pkexec", "sh", "-c", f"{act} -v {ver} {ext} && systemctl restart apache2 || true && systemctl restart php{ver}-fpm || true"], timeout=30)
+            res = subprocess.run(
+                ["pkexec", "sh", "-c",
+                 f"{act} -v {shlex.quote(ver)} {shlex.quote(ext)} && (systemctl restart apache2 || true) && (systemctl restart php{shlex.quote(ver)}-fpm || true)"],
+                timeout=300)
+            if res.returncode != 0:
+                QMessageBox.warning(self, "Gagal", f"Operasi '{act} {ext}' gagal (ekstensi tidak tersedia atau dibatalkan).")
         except Exception as e:
             logging.error(f"Failed to toggle extension: {e}")
             QMessageBox.critical(self, "Error", f"Gagal toggle extension: {str(e)}")
+        self.check_status()
 
 class EditorPage(QWidget):
     def __init__(self):
@@ -681,24 +1425,26 @@ class EditorPage(QWidget):
             "Apache: Main Config": "/etc/apache2/apache2.conf",
             "Apache: Ports Config": "/etc/apache2/ports.conf",
             "Apache: Default VHost": "/etc/apache2/sites-available/000-default.conf",
+            "Apache: Panel VHost": "/etc/apache2/conf-available/custom-panel-dir.conf",
             "Nginx: Main Config": "/etc/nginx/nginx.conf",
             "Nginx: Default VHost": "/etc/nginx/sites-available/default",
-            "MariaDB: Main Config": "/etc/mysql/mariadb.conf.d/50-server.cnf",
+            "MariaDB: Server Config": "/etc/mysql/mariadb.conf.d/50-server.cnf",
             "MongoDB: Main Config": "/etc/mongod.conf",
             "OS: Hosts File": "/etc/hosts"
         }
-        
-        php_cli = glob.glob("/etc/php/*/cli/php.ini")
-        if php_cli: self.files[f"PHP: CLI ini ({php_cli[0].split('/')[3]})"] = php_cli[0]
-        
-        php_apa = glob.glob("/etc/php/*/apache2/php.ini")
-        if php_apa: self.files[f"PHP: Apache ini ({php_apa[0].split('/')[3]})"] = php_apa[0]
-        
-        php_fpm = glob.glob("/etc/php/*/fpm/php.ini")
-        if php_fpm: self.files[f"PHP: FPM ini ({php_fpm[0].split('/')[3]})"] = php_fpm[0]
-        
-        pg = glob.glob("/etc/postgresql/*/main/postgresql.conf")
-        if pg: self.files[f"PostgreSQL: Config ({pg[0].split('/')[3]})"] = pg[0]
+
+        # PHP per-versi (Debian bisa multi-versi) -> tambahkan ini & apache2 & fpm yang ada
+        for php_ini in sorted(glob.glob("/etc/php/*/apache2/php.ini") + glob.glob("/etc/php/*/fpm/php.ini") + glob.glob("/etc/php/*/cli/php.ini")):
+            m = re.search(r"/etc/php/([^/]+)/([^/]+)/php\.ini", php_ini)
+            if m:
+                self.files[f"PHP {m.group(1)}: {m.group(2)} php.ini"] = php_ini
+        for fpm_pool in sorted(glob.glob("/etc/php/*/fpm/pool.d/www.conf")):
+            m = re.search(r"/etc/php/([^/]+)/", fpm_pool)
+            if m:
+                self.files[f"PHP {m.group(1)}: FPM Pool (www)"] = fpm_pool
+
+        pg = sorted(glob.glob("/etc/postgresql/*/main/postgresql.conf"))
+        if pg: self.files["PostgreSQL: Config"] = pg[0]
 
         self.combo.addItems(self.files.keys())
         
@@ -790,9 +1536,136 @@ class UtilsPage(QWidget):
         if HAS_ICONS: btn_create.setIcon(qta.icon("fa5s.globe", color="white"))
         btn_create.clicked.connect(self.create_vhost)
         card_vhost.layout.addWidget(btn_create)
+
+        self.dom_table = QTableWidget()
+        self.dom_table.setColumnCount(3)
+        self.dom_table.setHorizontalHeaderLabels(["Domain", "Document Root", ""])
+        self.dom_table.verticalHeader().setVisible(False)
+        self.dom_table.verticalHeader().setDefaultSectionSize(40)
+        dh = self.dom_table.horizontalHeader()
+        dh.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        dh.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        dh.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.dom_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.dom_table.setMaximumHeight(180)
+        card_vhost.layout.addWidget(self.dom_table)
         layout.addWidget(card_vhost)
+
+        card_dbsetup = Card()
+        card_dbsetup.layout.addWidget(QLabel("Database Setup", objectName="H1"))
+        hint = QLabel("Aksi sekali-pakai untuk menyiapkan database server lokal.")
+        hint.setObjectName("Hint")
+        card_dbsetup.layout.addWidget(hint)
+        h_dbs = QHBoxLayout()
+        btn_pg_init = QPushButton(" Init PostgreSQL")
+        btn_pg_init.setObjectName("BtnPrimary")
+        if HAS_ICONS: btn_pg_init.setIcon(qta.icon("fa5s.database", color="white"))
+        btn_pg_init.clicked.connect(self.init_postgres)
+        btn_pg_login = QPushButton(" PostgreSQL Login Setup")
+        btn_pg_login.setObjectName("BtnPrimary")
+        if HAS_ICONS: btn_pg_login.setIcon(qta.icon("fa5s.key", color="white"))
+        btn_pg_login.clicked.connect(self.setup_postgres_login)
+        btn_my_pwless = QPushButton(" MariaDB Passwordless")
+        btn_my_pwless.setObjectName("BtnPrimary")
+        if HAS_ICONS: btn_my_pwless.setIcon(qta.icon("fa5s.key", color="white"))
+        btn_my_pwless.clicked.connect(self.setup_mariadb_passwordless)
+        h_dbs.addWidget(btn_pg_init)
+        h_dbs.addWidget(btn_pg_login)
+        h_dbs.addWidget(btn_my_pwless)
+        h_dbs.addStretch()
+        card_dbsetup.layout.addLayout(h_dbs)
+        layout.addWidget(card_dbsetup)
+
         layout.addStretch()
         self.setLayout(layout)
+        self.refresh_domains()
+
+    def init_postgres(self):
+        # Debian: paket postgresql otomatis membuat cluster 'main'. Pastikan ada, lalu start.
+        script = (
+            "if ! pg_lsclusters -h 2>/dev/null | grep -q .; then\n"
+            "  V=$(ls /usr/lib/postgresql 2>/dev/null | sort -V | tail -1)\n"
+            "  [ -n \"$V\" ] && pg_createcluster \"$V\" main || true\n"
+            "fi\n"
+            "systemctl enable --now postgresql\n"
+        )
+
+        def done(ok):
+            if ok is True:
+                QMessageBox.information(self, "PostgreSQL", "PostgreSQL berhasil di-inisialisasi & dijalankan.")
+            else:
+                QMessageBox.critical(self, "Error", "Gagal inisialisasi PostgreSQL.")
+
+        run_async(self, lambda: run_root_script(script), done)
+
+    def setup_postgres_login(self):
+        reply = QMessageBox.question(
+            self, "PostgreSQL Login Setup",
+            "Akan mengeset password user 'postgres' menjadi 'postgres' dan mengaktifkan "
+            "autentikasi password (scram-sha-256) untuk koneksi localhost (agar bisa login via pgweb).\n\n"
+            "Untuk server lokal/development.\nLanjutkan?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Skrip dijalankan sebagai root via pkexec (ditulis ke file, jadi tidak ada masalah paste/line-wrap)
+        script = (
+            "set -e\n"
+            "if ! pg_lsclusters -h 2>/dev/null | grep -q .; then\n"
+            "  V=$(ls /usr/lib/postgresql 2>/dev/null | sort -V | tail -1)\n"
+            "  [ -n \"$V\" ] && pg_createcluster \"$V\" main || true\n"
+            "fi\n"
+            "systemctl enable --now postgresql\n"
+            "sudo -u postgres psql -c \"ALTER USER postgres PASSWORD 'postgres';\"\n"
+            "for p in /etc/postgresql/*/main/pg_hba.conf; do\n"
+            "  [ -f \"$p\" ] && sed -i -E 's#^(host[[:space:]]+all[[:space:]]+all[[:space:]]+(127\\.0\\.0\\.1/32|::1/128)[[:space:]]+)[[:alnum:]_-]+#\\1scram-sha-256#' \"$p\"\n"
+            "done\n"
+            "systemctl reload postgresql\n"
+        )
+
+        def done(ok):
+            if ok is True:
+                QMessageBox.information(self, "PostgreSQL",
+                    "Selesai! Login pgweb dengan:\n\n"
+                    "  Host     : 127.0.0.1\n"
+                    "  Port     : 5432\n"
+                    "  Username : postgres\n"
+                    "  Password : postgres\n"
+                    "  Database : postgres\n"
+                    "  SSL Mode : disable")
+            else:
+                QMessageBox.critical(self, "Error", "Gagal setup login PostgreSQL.")
+
+        run_async(self, lambda: run_root_script(script), done)
+
+    def setup_mariadb_passwordless(self):
+        reply = QMessageBox.question(
+            self, "MariaDB Passwordless",
+            "Akan menjalankan MariaDB dan membuat user 'admin'@'127.0.0.1' TANPA password "
+            "dengan hak akses penuh.\n\n"
+            "Ini menurunkan keamanan — hanya untuk server lokal/development.\nLanjutkan?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        sql = ("CREATE USER IF NOT EXISTS 'admin'@'127.0.0.1' IDENTIFIED VIA mysql_native_password USING ''; "
+               "GRANT ALL PRIVILEGES ON *.* TO 'admin'@'127.0.0.1' WITH GRANT OPTION; "
+               "FLUSH PRIVILEGES;")
+        script = (
+            "systemctl enable --now mariadb\n"
+            f'mariadb -e "{sql}"\n'
+        )
+
+        def done(ok):
+            if ok is True:
+                QMessageBox.information(self, "MariaDB",
+                    "Selesai! Login phpMyAdmin dengan:\n\n"
+                    "  Server   : 127.0.0.1\n  Username : admin\n  Password : (kosong)\n\n"
+                    "Pastikan sudah klik 'Setup / Repair' phpMyAdmin agar AllowNoPassword aktif.")
+            else:
+                QMessageBox.critical(self, "Error", "Gagal setup passwordless MariaDB.")
+
+        run_async(self, lambda: run_root_script(script), done)
 
     def fix_perms(self):
         username = self.inp_user.text()
@@ -814,54 +1687,473 @@ class UtilsPage(QWidget):
         if d := QFileDialog.getExistingDirectory(self): self.inp_path.setText(d)
 
     def create_vhost(self):
-        dom = self.inp_dom.text()
-        path = self.inp_path.text()
-        
+        dom = self.inp_dom.text().strip()
+        path = self.inp_path.text().strip()
+
         if not validate_domain(dom):
-            QMessageBox.critical(self, "Error", "Domain tidak valid!")
+            QMessageBox.critical(self, "Error", "Domain tidak valid! (mis. myapp.test)")
             return
-            
         if not validate_path(path):
             QMessageBox.critical(self, "Error", "Path tidak valid!")
             return
-            
         if not os.path.exists(path):
             QMessageBox.critical(self, "Error", "Path tidak ditemukan di sistem!")
             return
-            
+
+        path_escaped = shlex.quote(path)
+        # Marker '# loli-vhost' dipakai untuk mendata & menghapus domain bikinan panel
+        vhost_content = (
+            f"# loli-vhost {dom}\n"
+            "<VirtualHost *:80>\n"
+            f"    ServerName {dom}\n"
+            f"    DocumentRoot {path}\n"
+            f"    <Directory {path}>\n"
+            "        Options Indexes FollowSymLinks\n"
+            "        AllowOverride All\n"
+            "        Require all granted\n"
+            "    </Directory>\n"
+            "</VirtualHost>\n"
+        )
+        script = (
+            f"cat << 'LOLIEOF' > /etc/apache2/sites-available/{dom}.conf\n"
+            f"{vhost_content}"
+            "LOLIEOF\n"
+            f"a2ensite {shlex.quote(dom)}.conf || true\n"
+            # tambahkan ke /etc/hosts bila belum ada (fixed-string, whole-line)
+            f"grep -qxF '127.0.0.1 {dom}' /etc/hosts || echo '127.0.0.1 {dom}' >> /etc/hosts\n"
+            "systemctl reload apache2\n"
+        )
+
+        def done(ok):
+            if ok is True:
+                QMessageBox.information(self, "Success",
+                    f"Domain dibuat!\n\nhttp://{dom}\n(otomatis ditambahkan ke /etc/hosts)")
+                self.inp_dom.clear()
+            else:
+                QMessageBox.critical(self, "Error", "Gagal membuat domain (lihat log).")
+            self.refresh_domains()
+
+        run_async(self, lambda: run_root_script(script), done)
+
+    def refresh_domains(self):
+        # Data domain dari file conf.d yang punya marker '# loli-vhost'
+        self.dom_table.setRowCount(0)
+        domains = []
+        for conf in sorted(glob.glob("/etc/apache2/sites-available/*.conf")):
+            try:
+                with open(conf) as f:
+                    text = f.read()
+            except Exception:
+                continue
+            if "# loli-vhost" not in text:
+                continue
+            dom = ""
+            root = ""
+            for line in text.splitlines():
+                ls = line.strip()
+                if ls.startswith("ServerName"):
+                    dom = ls.split(None, 1)[-1].strip()
+                elif ls.startswith("DocumentRoot"):
+                    root = ls.split(None, 1)[-1].strip().strip('"')
+            if dom:
+                domains.append((dom, root))
+        for dom, root in domains:
+            r = self.dom_table.rowCount(); self.dom_table.insertRow(r)
+            self.dom_table.setItem(r, 0, QTableWidgetItem("  " + dom))
+            self.dom_table.setItem(r, 1, QTableWidgetItem(root))
+            b = QPushButton("Hapus"); b.setObjectName("BtnDanger"); b.setFixedWidth(80)
+            b.clicked.connect(lambda _, d=dom: self.delete_domain(d))
+            cell = QWidget(); cl = QHBoxLayout(cell); cl.setContentsMargins(6, 3, 6, 3); cl.addWidget(b)
+            self.dom_table.setCellWidget(r, 2, cell)
+
+    def delete_domain(self, dom: str):
+        if not validate_domain(dom):
+            return
+        if QMessageBox.warning(self, "Hapus Domain", f"Hapus virtual host '{dom}' dan entri /etc/hosts-nya?",
+                               QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return
+        dom_sed = dom.replace('.', r'\.')
+        script = (
+            f"a2dissite {shlex.quote(dom)}.conf || true\n"
+            f"rm -f /etc/apache2/sites-available/{dom}.conf\n"
+            f"sed -i '/^127\\.0\\.0\\.1[[:space:]]\\+{dom_sed}$/d' /etc/hosts\n"
+            "systemctl reload apache2\n"
+        )
+
+        def done(ok):
+            if ok is not True:
+                QMessageBox.critical(self, "Error", "Gagal menghapus domain.")
+            self.refresh_domains()
+
+        run_async(self, lambda: run_root_script(script), done)
+
+class ProjectsPage(QWidget):
+    def __init__(self):
+        super().__init__()
+        layout = QVBoxLayout(); layout.setContentsMargins(20, 20, 20, 20); layout.setSpacing(15)
+        header = QHBoxLayout()
+        header.addWidget(QLabel("Projects", objectName="PageTitle"))
+        header.addStretch()
+        btn_refresh = QPushButton(" Refresh"); btn_refresh.setObjectName("BtnGhost")
+        if HAS_ICONS: btn_refresh.setIcon(qta.icon("fa5s.sync", color="#34495e"))
+        btn_refresh.clicked.connect(self.scan)
+        header.addWidget(btn_refresh)
+        layout.addLayout(header)
+
+        card = Card()
+        self.lbl_root = QLabel(); self.lbl_root.setObjectName("Hint")
+        card.layout.addWidget(self.lbl_root)
+        self.table = QTableWidget(); self.table.setColumnCount(3)
+        self.table.setHorizontalHeaderLabels(["Project", "Type", "Actions"])
+        self.table.verticalHeader().setVisible(False)
+        self.table.verticalHeader().setDefaultSectionSize(46)
+        h = self.table.horizontalHeader()
+        h.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        h.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        h.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        card.layout.addWidget(self.table)
+        layout.addWidget(card)
+        self.setLayout(layout)
+        self.scan()
+
+    def detect_type(self, path: str) -> str:
+        def has(*names): return any(os.path.exists(os.path.join(path, n)) for n in names)
+        if has("artisan"): return "Laravel"
+        if has("wp-config.php", "wp-load.php", "wp-config-sample.php"): return "WordPress"
+        if has("go.mod"): return "Go"
+        if has("manage.py"): return "Django"
+        if has("requirements.txt", "pyproject.toml"): return "Python"
+        if has("composer.json"): return "PHP (Composer)"
+        if has("package.json"): return "Node.js"
         try:
-            dom_escaped = shlex.quote(dom)
-            path_escaped = shlex.quote(path)
-            
-            vhost_content = f"""<VirtualHost *:80>
-    ServerName {dom}
-    DocumentRoot {path}
-    <Directory {path}>
-        Options Indexes FollowSymLinks
-        AllowOverride All
-        Require all granted
-    </Directory>
-</VirtualHost>"""
-            
-            with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
-                temp_file.write(vhost_content)
-                temp_path = temp_file.name
-            
-            subprocess.run(["pkexec", "cp", temp_path, f"/etc/apache2/sites-available/{dom}.conf"], check=True, timeout=10)
-            os.remove(temp_path)
-            subprocess.run(["pkexec", "sh", "-c", f"a2ensite {dom_escaped}.conf && systemctl reload apache2"], check=True, timeout=20)
-            QMessageBox.information(self, "Success", "Domain created!")
+            files = os.listdir(path)
+            if any(f.endswith(".php") for f in files): return "PHP"
+            if any(f.endswith((".html", ".htm")) for f in files): return "Static"
+        except Exception:
+            pass
+        return "Folder"
+
+    def _action_btn(self, icon, tip, fn):
+        b = QPushButton(); b.setFixedSize(32, 30); b.setCursor(Qt.CursorShape.PointingHandCursor); b.setToolTip(tip)
+        b.setObjectName("BtnGhost")
+        if HAS_ICONS: b.setIcon(qta.icon(icon, color="#34495e"))
+        b.clicked.connect(fn)
+        return b
+
+    def scan(self):
+        root = get_web_root()
+        self.lbl_root.setText(f"Web root: {root}")
+        self.table.setRowCount(0)
+        try:
+            entries = sorted([d for d in os.listdir(root)
+                              if os.path.isdir(os.path.join(root, d)) and not d.startswith('.')])
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Gagal membuat domain: {str(e)}")
-            logging.error(f"Failed to create vhost: {e}")
-            if 'temp_path' in locals() and os.path.exists(temp_path):
-                os.remove(temp_path)
+            entries = []
+            logging.warning(f"Failed to list projects: {e}")
+        for name in entries:
+            path = os.path.join(root, name)
+            r = self.table.rowCount(); self.table.insertRow(r)
+            self.table.setItem(r, 0, QTableWidgetItem("  " + name))
+            self.table.setItem(r, 1, QTableWidgetItem(self.detect_type(path)))
+            cell = QWidget(); cl = QHBoxLayout(cell); cl.setContentsMargins(6, 4, 6, 4); cl.setSpacing(6)
+            cl.addWidget(self._action_btn("fa5s.globe", "Buka di browser", lambda _, n=name: webbrowser.open(f"http://localhost/{n}/")))
+            cl.addWidget(self._action_btn("fa5s.folder-open", "Buka folder", lambda _, p=path: open_path(p)))
+            cl.addWidget(self._action_btn("fa5s.terminal", "Buka terminal", lambda _, p=path: open_terminal(p)))
+            cl.addWidget(self._action_btn("fa5s.code", "Buka editor", lambda _, p=path: open_editor(p)))
+            self.table.setCellWidget(r, 2, cell)
+
+
+class DiscoveryPage(QWidget):
+    def __init__(self):
+        super().__init__()
+        layout = QVBoxLayout(); layout.setContentsMargins(20, 20, 20, 20); layout.setSpacing(15)
+        header = QHBoxLayout()
+        header.addWidget(QLabel("Discovery", objectName="PageTitle"))
+        header.addStretch()
+        btn_refresh = QPushButton(" Refresh"); btn_refresh.setObjectName("BtnGhost")
+        if HAS_ICONS: btn_refresh.setIcon(qta.icon("fa5s.sync", color="#34495e"))
+        btn_refresh.clicked.connect(self.scan)
+        header.addWidget(btn_refresh)
+        layout.addLayout(header)
+
+        card = Card()
+        self.table = QTableWidget(); self.table.setColumnCount(4)
+        self.table.setHorizontalHeaderLabels(["Item", "Path", "Status", ""])
+        self.table.verticalHeader().setVisible(False)
+        self.table.verticalHeader().setDefaultSectionSize(40)
+        h = self.table.horizontalHeader()
+        h.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        h.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        h.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        h.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        card.layout.addWidget(self.table)
+        layout.addWidget(card)
+        self.setLayout(layout)
+        self.scan()
+
+    def items(self):
+        def first(pattern, fallback):
+            g = sorted(glob.glob(pattern))
+            return g[0] if g else fallback
+        return [
+            ("Web Root", get_web_root()),
+            ("Apache Config", "/etc/apache2/apache2.conf"),
+            ("Apache sites-available", "/etc/apache2/sites-available"),
+            ("Nginx Config", "/etc/nginx/nginx.conf"),
+            ("PHP ini (apache)", first("/etc/php/*/apache2/php.ini", "/etc/php")),
+            ("PHP-FPM pool", first("/etc/php/*/fpm/pool.d/www.conf", "/etc/php")),
+            ("PHP ext dir", first("/etc/php/*/mods-available", "/etc/php")),
+            ("MariaDB Config", "/etc/mysql/mariadb.conf.d/50-server.cnf"),
+            ("MariaDB Data", "/var/lib/mysql"),
+            ("PostgreSQL Data", "/var/lib/postgresql"),
+            ("PostgreSQL Config", first("/etc/postgresql/*/main/postgresql.conf", "/etc/postgresql")),
+            ("Hosts File", "/etc/hosts"),
+            ("pgweb binary", os.path.join(BASE_DIR, "pgweb_linux_amd64")),
+            ("mailpit binary", os.path.join(BASE_DIR, "mailpit")),
+            ("phpMyAdmin", os.path.join(BASE_DIR, "phpmyadmin")),
+            ("php", shutil.which("php") or "php (tidak ada)"),
+            ("mariadb", shutil.which("mariadb") or "mariadb (tidak ada)"),
+            ("psql", shutil.which("psql") or "psql (tidak ada)"),
+        ]
+
+    def scan(self):
+        self.table.setRowCount(0)
+        for name, path in self.items():
+            exists = os.path.exists(path)
+            r = self.table.rowCount(); self.table.insertRow(r)
+            self.table.setItem(r, 0, QTableWidgetItem("  " + name))
+            self.table.setItem(r, 1, QTableWidgetItem(path))
+            st = QTableWidgetItem("● Ada" if exists else "○ Tidak ada")
+            st.setForeground(QColor("#27ae60") if exists else QColor("#95a5a6"))
+            self.table.setItem(r, 2, st)
+            if exists:
+                b = QPushButton("Open"); b.setObjectName("BtnGhost"); b.setFixedWidth(80)
+                b.clicked.connect(lambda _, p=path: open_path(p if os.path.isdir(p) else os.path.dirname(p)))
+                cell = QWidget(); cl = QHBoxLayout(cell); cl.setContentsMargins(6, 3, 6, 3); cl.addWidget(b)
+                self.table.setCellWidget(r, 3, cell)
+
+
+class ProcessPage(QWidget):
+    def __init__(self):
+        super().__init__()
+        layout = QVBoxLayout(); layout.setContentsMargins(20, 20, 20, 20); layout.setSpacing(15)
+        header = QHBoxLayout()
+        header.addWidget(QLabel("Process Monitor", objectName="PageTitle"))
+        header.addStretch()
+        self.search = QLineEdit(); self.search.setPlaceholderText("Filter nama proses..."); self.search.setFixedWidth(240)
+        self.search.textChanged.connect(self.populate)
+        btn_refresh = QPushButton(" Refresh"); btn_refresh.setObjectName("BtnGhost")
+        if HAS_ICONS: btn_refresh.setIcon(qta.icon("fa5s.sync", color="#34495e"))
+        btn_refresh.clicked.connect(self.refresh)
+        header.addWidget(self.search); header.addWidget(btn_refresh)
+        layout.addLayout(header)
+
+        card = Card()
+        self.table = QTableWidget(); self.table.setColumnCount(6)
+        self.table.setHorizontalHeaderLabels(["PID", "Name", "User", "CPU%", "MEM%", "Action"])
+        self.table.verticalHeader().setVisible(False)
+        self.table.verticalHeader().setDefaultSectionSize(36)
+        h = self.table.horizontalHeader()
+        h.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        h.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        for i in (2, 3, 4, 5):
+            h.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        card.layout.addWidget(self.table)
+        layout.addWidget(card)
+        self.setLayout(layout)
+        self._procs = []
+        self.refresh()
+
+    def refresh(self):
+        procs = []
+        for p in psutil.process_iter(['pid', 'name', 'username', 'cpu_percent', 'memory_percent']):
+            try:
+                info = p.info
+                procs.append((info['pid'], info.get('name') or '?', info.get('username') or '?',
+                              info.get('cpu_percent') or 0.0, info.get('memory_percent') or 0.0))
+            except Exception:
+                continue
+        procs.sort(key=lambda x: x[4], reverse=True)
+        self._procs = procs
+        self.populate()
+
+    def populate(self):
+        flt = self.search.text().lower().strip()
+        self.table.setRowCount(0)
+        shown = 0
+        for pid, name, user, cpu, mem in self._procs:
+            if flt and flt not in name.lower():
+                continue
+            r = self.table.rowCount(); self.table.insertRow(r)
+            self.table.setItem(r, 0, QTableWidgetItem(str(pid)))
+            self.table.setItem(r, 1, QTableWidgetItem(name))
+            self.table.setItem(r, 2, QTableWidgetItem(user))
+            self.table.setItem(r, 3, QTableWidgetItem(f"{cpu:.1f}"))
+            self.table.setItem(r, 4, QTableWidgetItem(f"{mem:.1f}"))
+            b = QPushButton("Kill"); b.setObjectName("BtnDanger"); b.setFixedWidth(70)
+            b.clicked.connect(lambda _, pp=pid, nn=name: self.kill(pp, nn))
+            cell = QWidget(); cl = QHBoxLayout(cell); cl.setContentsMargins(6, 3, 6, 3); cl.addWidget(b)
+            self.table.setCellWidget(r, 5, cell)
+            shown += 1
+            if shown >= 400:
+                break
+
+    def kill(self, pid: int, name: str):
+        if QMessageBox.warning(self, "Kill Process", f"Hentikan '{name}' (PID {pid})?",
+                               QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            psutil.Process(pid).terminate()
+            QTimer.singleShot(600, self.refresh)
+        except psutil.AccessDenied:
+            def work():
+                return subprocess.run(["pkexec", "kill", "-9", str(pid)], timeout=30).returncode
+            def done(_):
+                self.refresh()
+            run_async(self, work, done)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Gagal kill: {e}")
+
+
+class LogsPage(QWidget):
+    def __init__(self):
+        super().__init__()
+        layout = QVBoxLayout(); layout.setContentsMargins(20, 20, 20, 20); layout.setSpacing(15)
+        header = QHBoxLayout()
+        header.addWidget(QLabel("Logs", objectName="PageTitle"))
+        header.addStretch()
+        btn_refresh = QPushButton(" Refresh"); btn_refresh.setObjectName("BtnGhost")
+        if HAS_ICONS: btn_refresh.setIcon(qta.icon("fa5s.sync", color="#34495e"))
+        btn_refresh.clicked.connect(self.load_current)
+        header.addWidget(btn_refresh)
+        layout.addLayout(header)
+
+        card = Card()
+        self.tabs = QTabWidget()
+        sources = [
+            ("Apache", ["journalctl", "-u", "apache2", "-n", "300", "--no-pager"]),
+            ("PHP-FPM", ["journalctl", "-u", "php*-fpm", "-n", "300", "--no-pager"]),
+            ("MariaDB", ["journalctl", "-u", "mariadb", "-n", "300", "--no-pager"]),
+            ("PostgreSQL", ["journalctl", "-u", "postgresql*", "-n", "300", "--no-pager"]),
+            ("Nginx", ["journalctl", "-u", "nginx", "-n", "300", "--no-pager"]),
+        ]
+        self.viewers = {}
+        for title, cmd in sources:
+            ed = QTextEdit(); ed.setReadOnly(True)
+            ed.setStyleSheet("background-color:#1e1e1e; color:#dcdcdc; font-family:monospace; font-size:12px; border-radius:5px;")
+            self.tabs.addTab(ed, title)
+            self.viewers[title] = (ed, cmd)
+        card.layout.addWidget(self.tabs)
+        layout.addWidget(card)
+        self.setLayout(layout)
+        self.tabs.currentChanged.connect(lambda _: self.load_current())
+        QTimer.singleShot(300, self.load_current)
+
+    def load_current(self):
+        title = self.tabs.tabText(self.tabs.currentIndex())
+        ed, cmd = self.viewers[title]
+        ed.setPlainText("Loading...")
+
+        def work():
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+            return (r.stdout or "") + (("\n" + r.stderr) if r.stderr else "")
+
+        def done(out):
+            if isinstance(out, Exception):
+                ed.setPlainText(f"Error: {out}")
+            else:
+                ed.setPlainText(out or "(kosong)")
+                ed.verticalScrollBar().setValue(ed.verticalScrollBar().maximum())
+
+        run_async(self, work, done)
+
+
+class AboutPage(QWidget):
+    def __init__(self):
+        super().__init__()
+        layout = QVBoxLayout(); layout.setContentsMargins(20, 20, 20, 20); layout.setSpacing(15)
+        layout.addWidget(QLabel("About", objectName="PageTitle"))
+
+        card = Card()
+        inner = QVBoxLayout()
+        inner.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        inner.setSpacing(8)
+        logo = QLabel(); logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        pm = load_logo_pixmap(96)
+        if pm is not None and not pm.isNull():
+            logo.setFixedHeight(104)
+            logo.setPixmap(pm)
+            inner.addWidget(logo)
+        name = QLabel(APP_NAME); name.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        name.setStyleSheet("font-size: 22px; font-weight: bold; color: #2c3e50;")
+        inner.addWidget(name)
+        ver = QLabel(f"Versi {APP_VERSION}"); ver.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        ver.setStyleSheet("font-size: 14px; color: #3498db; font-weight: bold;")
+        inner.addWidget(ver)
+        desc = QLabel("Panel desktop untuk mengelola environment web development lokal di Linux (Debian/Ubuntu).")
+        desc.setAlignment(Qt.AlignmentFlag.AlignCenter); desc.setWordWrap(True); desc.setObjectName("Hint")
+        inner.addWidget(desc)
+        gh_row = QHBoxLayout()
+        gh_row.addStretch()
+        btn_gh = QPushButton(" github.com/s4rt4/loli")
+        btn_gh.setObjectName("BtnGhost")
+        btn_gh.setCursor(Qt.CursorShape.PointingHandCursor)
+        if HAS_ICONS: btn_gh.setIcon(qta.icon("fa5b.github", color="#2c3e50"))
+        btn_gh.clicked.connect(lambda: webbrowser.open("https://github.com/s4rt4/loli"))
+        gh_row.addWidget(btn_gh)
+        gh_row.addStretch()
+        inner.addLayout(gh_row)
+        card.layout.addLayout(inner)
+        layout.addWidget(card)
+
+        info = Card()
+        info.layout.addWidget(QLabel("System Info", objectName="H1"))
+        for k, v in self.sysinfo():
+            row = QHBoxLayout()
+            lk = QLabel(k); lk.setFixedWidth(140); lk.setStyleSheet("color: #7f8c8d;")
+            lv = QLabel(v); lv.setStyleSheet("font-weight: 600; color: #2c3e50;")
+            row.addWidget(lk); row.addWidget(lv); row.addStretch()
+            info.layout.addLayout(row)
+        layout.addWidget(info)
+
+        layout.addStretch()
+        self.setLayout(layout)
+
+    def sysinfo(self):
+        import platform
+        from PyQt6.QtCore import QT_VERSION_STR
+        distro = "Linux"
+        try:
+            with open("/etc/os-release") as f:
+                for line in f:
+                    if line.startswith("PRETTY_NAME="):
+                        distro = line.split("=", 1)[1].strip().strip('"')
+                        break
+        except Exception:
+            pass
+        return [
+            ("Aplikasi", f"{APP_NAME}  v{APP_VERSION}"),
+            ("OS", distro),
+            ("Kernel", platform.release()),
+            ("Python", platform.python_version()),
+            ("Qt", QT_VERSION_STR),
+        ]
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Debian Ultimate Server Panel")
+        self.setWindowTitle(APP_NAME)
+        if os.path.exists(LOGO_PATH):
+            self.setWindowIcon(QIcon(LOGO_PATH))
         self.resize(1050, 780)
+        # minimum kecil supaya bisa di-snap/tiling (setengah layar) & di-resize bebas
+        self.setMinimumSize(640, 520)
         self.setStyleSheet(STYLESHEET)
         self.is_quitting = False
         
@@ -878,25 +2170,45 @@ class MainWindow(QMainWindow):
         side_lay = QVBoxLayout()
         side_lay.setContentsMargins(0,20,0,20)
         
-        title = QLabel("SERVER\nMANAGER")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("font-weight: bold; font-size: 16px; margin-bottom: 30px;")
-        side_lay.addWidget(title)
+        brand = QWidget()
+        brand_lay = QVBoxLayout(brand)
+        brand_lay.setContentsMargins(0, 0, 0, 25)
+        brand_lay.setSpacing(2)
+        _logo_pm = load_logo_pixmap(58)
+        if _logo_pm is not None and not _logo_pm.isNull():
+            logo_lbl = QLabel()
+            logo_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            logo_lbl.setPixmap(_logo_pm)
+            brand_lay.addWidget(logo_lbl)
+        name_lbl = QLabel("Loli")
+        name_lbl.setObjectName("Brand")
+        name_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        sub_lbl = QLabel("LOCALHOST LINUX")
+        sub_lbl.setObjectName("BrandSub")
+        sub_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        brand_lay.addWidget(name_lbl)
+        brand_lay.addWidget(sub_lbl)
+        side_lay.addWidget(brand)
         
-        self.btn_dash = self.mk_btn("Dashboard", "fa5s.tachometer-alt")
-        self.btn_prefs = self.mk_btn("Preferences", "fa5s.cogs")
-        self.btn_php = self.mk_btn("PHP Manager", "fa5b.php")
-        self.btn_sniper = self.mk_btn("Port Sniper", "fa5s.crosshairs") 
-        self.btn_edit = self.mk_btn("Config Editor", "fa5s.edit")
-        self.btn_util = self.mk_btn("Utilities", "fa5s.tools")
-        
-        side_lay.addWidget(self.btn_dash)
-        side_lay.addWidget(self.btn_prefs)
-        side_lay.addWidget(self.btn_php)
-        side_lay.addWidget(self.btn_sniper)
-        side_lay.addWidget(self.btn_edit)
-        side_lay.addWidget(self.btn_util)
-        
+        self.menu_specs = [
+            ("Dashboard", "fa5s.tachometer-alt", DashboardPage),
+            ("Projects", "fa5s.folder", ProjectsPage),
+            ("Preferences", "fa5s.cogs", PrefsPage),
+            ("PHP Manager", "fa5b.php", PhpPage),
+            ("Port Sniper", "fa5s.crosshairs", SniperPage),
+            ("Processes", "fa5s.microchip", ProcessPage),
+            ("Config Editor", "fa5s.edit", EditorPage),
+            ("Logs", "fa5s.file-alt", LogsPage),
+            ("Discovery", "fa5s.compass", DiscoveryPage),
+            ("Utilities", "fa5s.tools", UtilsPage),
+            ("About", "fa5s.info-circle", AboutPage),
+        ]
+        self.menu_btns = []
+        for label, icon, _cls in self.menu_specs:
+            b = self.mk_btn(label, icon)
+            self.menu_btns.append(b)
+            side_lay.addWidget(b)
+
         side_lay.addStretch()
 
         sys_frame = QFrame()
@@ -930,21 +2242,18 @@ class MainWindow(QMainWindow):
         main_lay.addWidget(sidebar)
         
         self.stack = QStackedWidget()
-        self.stack.addWidget(DashboardPage())
-        self.stack.addWidget(PrefsPage())
-        self.stack.addWidget(PhpPage())
-        self.stack.addWidget(SniperPage())
-        self.stack.addWidget(EditorPage())
-        self.stack.addWidget(UtilsPage())
-        main_lay.addWidget(self.stack)
-        
-        self.btn_dash.clicked.connect(lambda: self.stack.setCurrentIndex(0))
-        self.btn_prefs.clicked.connect(lambda: self.stack.setCurrentIndex(1))
-        self.btn_php.clicked.connect(lambda: self.stack.setCurrentIndex(2))
-        self.btn_sniper.clicked.connect(lambda: self.stack.setCurrentIndex(3))
-        self.btn_edit.clicked.connect(lambda: self.stack.setCurrentIndex(4))
-        self.btn_util.clicked.connect(lambda: self.stack.setCurrentIndex(5))
-        self.btn_dash.setChecked(True)
+        for _label, _icon, cls in self.menu_specs:
+            self.stack.addWidget(cls())
+        # Bungkus konten dalam scroll area agar window bisa mengecil -> snap/tiling GNOME jalan
+        content_scroll = QScrollArea()
+        content_scroll.setWidgetResizable(True)
+        content_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        content_scroll.setWidget(self.stack)
+        main_lay.addWidget(content_scroll)
+
+        for idx, b in enumerate(self.menu_btns):
+            b.clicked.connect(lambda checked, i=idx: self.stack.setCurrentIndex(i))
+        self.menu_btns[0].setChecked(True)
         
         self.setup_tray_icon()
         
@@ -953,11 +2262,26 @@ class MainWindow(QMainWindow):
         self.global_timer.start(2000)
         self.update_sidebar_resources()
 
+    @staticmethod
+    def _load_color(v):
+        if v < 60: return "#2ecc71"
+        if v < 85: return "#f1c40f"
+        return "#e74c3c"
+
     def update_sidebar_resources(self):
         try:
-            self.side_bars["CPU"].setValue(int(psutil.cpu_percent()))
-            self.side_bars["RAM"].setValue(int(psutil.virtual_memory().percent))
-            self.side_bars["DISK"].setValue(int(psutil.disk_usage('/').percent))
+            vals = {
+                "CPU": int(psutil.cpu_percent()),
+                "RAM": int(psutil.virtual_memory().percent),
+                "DISK": int(psutil.disk_usage('/').percent),
+            }
+            for key, v in vals.items():
+                bar = self.side_bars[key]
+                bar.setValue(v)
+                c = self._load_color(v)
+                if bar.property("barColor") != c:
+                    bar.setProperty("barColor", c)
+                    bar.setStyleSheet(f"QProgressBar::chunk {{ background-color: {c}; border-radius: 4px; }}")
         except Exception as e:
             logging.warning(f"Failed to update system resources: {e}")
 
@@ -971,36 +2295,108 @@ class MainWindow(QMainWindow):
         return btn
 
     def setup_tray_icon(self):
+        # GNOME modern sering tanpa system tray -> deteksi agar window tidak "hilang"
+        self.has_tray = QSystemTrayIcon.isSystemTrayAvailable()
         self.tray_icon = QSystemTrayIcon(self)
-        self.tray_icon.setIcon(QIcon.fromTheme("utilities-system-monitor", QIcon("")))
-        tray_menu = QMenu()
-        show_action = QAction("Open Panel", self)
-        show_action.triggered.connect(self.showNormal)
-        quit_action = QAction("Quit Panel", self)
-        quit_action.triggered.connect(self.force_quit)
-        tray_menu.addAction(show_action)
-        tray_menu.addAction(quit_action)
-        self.tray_icon.setContextMenu(tray_menu)
+        icon_path = TRAY_ICON_PATH if os.path.exists(TRAY_ICON_PATH) else LOGO_PATH
+        if os.path.exists(icon_path):
+            self.tray_icon.setIcon(QIcon(icon_path))
+        else:
+            self.tray_icon.setIcon(QIcon.fromTheme("utilities-system-monitor", QIcon("")))
+        self.tray_icon.setToolTip(APP_NAME)
+
+        def add(menu, text, icon, fn):
+            a = menu.addAction(text)
+            if HAS_ICONS:
+                a.setIcon(qta.icon(icon, color="#2c3e50"))
+            a.triggered.connect(fn)
+            return a
+
+        menu = QMenu()
+        add(menu, "Open Panel", "fa5s.window-maximize", self.show_panel)
+        menu.addSeparator()
+        add(menu, "Start All Services", "fa5s.play", self.start_all_services)
+        add(menu, "Stop All Services", "fa5s.stop", self.stop_all_services)
+        menu.addSeparator()
+        add(menu, "Open Localhost", "fa5s.globe", lambda: webbrowser.open("http://localhost"))
+        add(menu, "Open phpMyAdmin", "fa5s.database", lambda: webbrowser.open("http://localhost/phpmyadmin"))
+        add(menu, "Open pgweb", "fa5s.table", lambda: webbrowser.open(f"http://localhost:{PGWEB_PORT}"))
+        add(menu, "Open www Folder", "fa5s.folder-open", lambda: open_path(get_web_root()))
+        add(menu, "Open Terminal", "fa5s.terminal", lambda: open_terminal(get_web_root()))
+        menu.addSeparator()
+        add(menu, "Quit Loli", "fa5s.power-off", self.force_quit)
+
+        self.tray_icon.setContextMenu(menu)
+        self.tray_icon.activated.connect(self._tray_activated)
         self.tray_icon.show()
 
+    def _tray_activated(self, reason):
+        if reason == QSystemTrayIcon.ActivationReason.Trigger:
+            self.show_panel()
+
+    def show_panel(self):
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def start_all_services(self):
+        # apache2 (bukan nginx, hindari konflik :80) + database, satu prompt
+        script = "for s in apache2 mariadb postgresql redis-server memcached mongod; do systemctl start $s 2>/dev/null || true; done\n"
+
+        def done(_):
+            self.tray_icon.showMessage(APP_NAME, "Start All Services dijalankan.",
+                                       QSystemTrayIcon.MessageIcon.Information, 2500)
+
+        run_async(self, lambda: run_root_script(script), done)
+
+    def stop_all_services(self):
+        script = "for s in apache2 nginx mariadb postgresql redis-server memcached mongod; do systemctl stop $s 2>/dev/null || true; done\n"
+
+        def done(_):
+            self.tray_icon.showMessage(APP_NAME, "Stop All Services dijalankan.",
+                                       QSystemTrayIcon.MessageIcon.Information, 2500)
+
+        run_async(self, lambda: run_root_script(script), done)
+
     def closeEvent(self, event):
-        if not self.is_quitting:
-            event.ignore()
-            self.hide()
-            self.tray_icon.showMessage("Running in Background", "Panel disembunyikan ke taskbar.", QSystemTrayIcon.MessageIcon.Information, 2500)
-        else:
+        if self.is_quitting:
             if hasattr(self, 'global_timer'):
                 self.global_timer.stop()
             event.accept()
+            return
+        if getattr(self, 'has_tray', False):
+            # Ada system tray -> sembunyikan ke tray
+            event.ignore()
+            self.hide()
+            self.tray_icon.showMessage("Berjalan di Background",
+                                       "Loli disembunyikan ke tray. Klik ikon tray untuk membuka.",
+                                       QSystemTrayIcon.MessageIcon.Information, 2500)
+        else:
+            # Tidak ada tray (GNOME default) -> minimize supaya window tidak hilang
+            event.ignore()
+            self.showMinimized()
 
     def force_quit(self):
         self.is_quitting = True
+        dash = self.stack.widget(0)
+        if hasattr(dash, 'stop_pgweb'):
+            try: dash.stop_pgweb()
+            except Exception as e: logging.warning(f"Failed to stop pgweb on quit: {e}")
+        if hasattr(dash, 'stop_mailpit'):
+            try: dash.stop_mailpit()
+            except Exception as e: logging.warning(f"Failed to stop mailpit on quit: {e}")
         if hasattr(self, 'global_timer'):
             self.global_timer.stop()
         QApplication.instance().quit()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    # Identitas app -> GNOME/Wayland mencocokkan ke loli.desktop (ikon & nama di dock, bukan "python3")
+    app.setApplicationName("Loli")
+    app.setApplicationDisplayName(APP_NAME)
+    app.setDesktopFileName("loli")
+    if os.path.exists(LOGO_PATH):
+        app.setWindowIcon(QIcon(LOGO_PATH))
     app.setQuitOnLastWindowClosed(False)
     win = MainWindow()
     win.show()
