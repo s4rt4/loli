@@ -37,7 +37,7 @@ install -dm0755 %{buildroot}%{_datadir}/loli/icons
 install -m0644 icons/*.svg     %{buildroot}%{_datadir}/loli/icons/
 install -Dm0755 loli.launcher  %{buildroot}%{_bindir}/loli
 install -Dm0644 loli.desktop   %{buildroot}%{_datadir}/applications/loli.desktop
-install -Dm0644 logo.svg       %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/loli.svg
+install -Dm0644 logo-tray.svg  %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/loli.svg
 
 %files
 %dir %{_datadir}/loli
@@ -56,6 +56,8 @@ install -Dm0644 logo.svg       %{buildroot}%{_datadir}/icons/hicolor/scalable/ap
 - Custom Lucide SVG icons for the sidebar (recolored, active-state tint) and
   dashboard start/stop/restart/open actions, with Font Awesome fallback.
 - Sidebar brand simplified to a recolored logo only (text removed).
+- App/launcher/dock/window icon now uses the clean recolored lollipop.
+- About page reports the correct version (1.0.1).
 
 * Sun Jun 07 2026 s4rt4 <surat.sarta@gmail.com> - 1.0.0-1
 - Initial RPM: full UI, service management, DB tools, multi-page panel.

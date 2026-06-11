@@ -43,7 +43,7 @@ try:
 except Exception:
     DATA_DIR = BASE_DIR
 APP_NAME = "Loli — Localhost Linux"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 PGWEB_PORT = 8081
 MAILPIT_UI_PORT = 8025
 MAILPIT_SMTP_PORT = 1025
@@ -2238,7 +2238,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle(APP_NAME)
         if os.path.exists(LOGO_PATH):
-            self.setWindowIcon(QIcon(LOGO_PATH))
+            self.setWindowIcon(QIcon(TRAY_ICON_PATH))
         self.resize(1050, 780)
         # minimum kecil supaya bisa di-snap/tiling (setengah layar) & di-resize bebas
         self.setMinimumSize(640, 520)
@@ -2510,7 +2510,7 @@ if __name__ == "__main__":
     app.setApplicationDisplayName(APP_NAME)
     app.setDesktopFileName("loli")
     if os.path.exists(LOGO_PATH):
-        app.setWindowIcon(QIcon(LOGO_PATH))
+        app.setWindowIcon(QIcon(TRAY_ICON_PATH))
     app.setQuitOnLastWindowClosed(False)
     win = MainWindow()
     win.show()
