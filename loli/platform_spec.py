@@ -36,6 +36,9 @@ class Platform:
     pg_conf_glob: str            # glob for postgresql.conf
     pg_hba_glob: str             # glob for pg_hba.conf
     nginx_site: str              # nginx site file we write
+    phpmyadmin_conf: str         # apache conf file we write for phpMyAdmin
+    php_ini_glob: str            # shell glob(s) of php.ini files to patch
+    php_fpm_unit: str            # systemctl unit name for php-fpm
 
     # Dashboard service rows: (unit, label, icon)
     services: tuple = field(default_factory=tuple)
@@ -113,6 +116,32 @@ class Platform:
         return ("command -v setsebool >/dev/null 2>&1 && "
                 "setsebool -P httpd_can_network_connect_db on 2>/dev/null || true\n")
 
+    # ---- postgresql cluster init + pg_hba auth fix (structurally distinct) ----
+    def pg_ensure_cluster(self) -> str:
+        if self.id == "debian":
+            return ("if ! pg_lsclusters -h 2>/dev/null | grep -q .; then\n"
+                    "  V=$(ls /usr/lib/postgresql 2>/dev/null | sort -V | tail -1)\n"
+                    "  [ -n \"$V\" ] && pg_createcluster \"$V\" main || true\n"
+                    "fi\n")
+        return ("if [ ! -f /var/lib/pgsql/data/PG_VERSION ]; then\n"
+                "  postgresql-setup --initdb\n"
+                "fi\n")
+
+    def pg_hba_fix(self) -> str:
+        if self.id == "debian":
+            return ("for p in /etc/postgresql/*/main/pg_hba.conf; do\n"
+                    "  [ -f \"$p\" ] && sed -i -E 's#^(host[[:space:]]+all[[:space:]]+all[[:space:]]+"
+                    "(127\\.0\\.0\\.1/32|::1/128)[[:space:]]+)[[:alnum:]_-]+#\\1scram-sha-256#' \"$p\"\n"
+                    "done\n")
+        return ("python3 - <<'PYEOF'\n"
+                "import re\n"
+                "p = '/var/lib/pgsql/data/pg_hba.conf'\n"
+                "s = open(p).read()\n"
+                "s = re.sub(r'^(host\\s+all\\s+all\\s+(?:127\\.0\\.0\\.1/32|::1/128)\\s+)[\\w-]+', "
+                "r'\\1scram-sha-256', s, flags=re.M)\n"
+                "open(p, 'w').write(s)\n"
+                "PYEOF\n")
+
 
 FEDORA = Platform(
     id="fedora",
@@ -130,6 +159,9 @@ FEDORA = Platform(
     pg_conf_glob="/var/lib/pgsql/data/postgresql.conf",
     pg_hba_glob="/var/lib/pgsql/data/pg_hba.conf",
     nginx_site="/etc/nginx/conf.d/custom-panel.conf",
+    phpmyadmin_conf="/etc/httpd/conf.d/phpMyAdmin.conf",
+    php_ini_glob="/etc/php.ini",
+    php_fpm_unit="php-fpm",
     services=(
         ("httpd", "Apache Web Server", "fa5s.server"),
         ("nginx", "Nginx Web Server", "fa5s.server"),
@@ -162,6 +194,9 @@ DEBIAN = Platform(
     pg_conf_glob="/etc/postgresql/*/main/postgresql.conf",
     pg_hba_glob="/etc/postgresql/*/main/pg_hba.conf",
     nginx_site="/etc/nginx/sites-available/default",
+    phpmyadmin_conf="/etc/apache2/conf-available/phpmyadmin.conf",
+    php_ini_glob="/etc/php/*/apache2/php.ini /etc/php/*/fpm/php.ini",
+    php_fpm_unit="php*-fpm",
     services=(
         ("apache2", "Apache Web Server", "fa5s.server"),
         ("nginx", "Nginx Web Server", "fa5s.server"),
