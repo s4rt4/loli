@@ -50,7 +50,7 @@ install -Dm0644 logo.svg       %{buildroot}%{_datadir}/icons/hicolor/scalable/ap
 %{_datadir}/icons/hicolor/scalable/apps/loli.svg
 
 %changelog
-* Wed Jun 11 2026 s4rt4 <surat.sarta@gmail.com> - 1.0.1-1
+* Thu Jun 11 2026 s4rt4 <surat.sarta@gmail.com> - 1.0.1-1
 - UI refresh: modern slate/Tailwind palette, softer radii, card drop shadows.
 - Page headers gain subtitles; status pills and inputs polished.
 - Custom Lucide SVG icons for the sidebar (recolored, active-state tint) and
