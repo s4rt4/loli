@@ -1,5 +1,5 @@
 Name:           loli
-Version:        1.0.1
+Version:        1.0.2
 Release:        1%{?dist}
 Summary:        Loli — Localhost Linux web development panel
 
@@ -31,6 +31,8 @@ Downloadable tools are stored per-user in ~/.local/share/loli.
 
 %install
 install -Dm0644 web_panel.py   %{buildroot}%{_datadir}/loli/web_panel.py
+install -dm0755 %{buildroot}%{_datadir}/loli/loli
+install -m0644 loli/*.py       %{buildroot}%{_datadir}/loli/loli/
 install -Dm0644 logo.svg       %{buildroot}%{_datadir}/loli/logo.svg
 install -Dm0644 logo-tray.svg  %{buildroot}%{_datadir}/loli/logo-tray.svg
 install -dm0755 %{buildroot}%{_datadir}/loli/icons
@@ -42,6 +44,7 @@ install -Dm0644 logo-tray.svg  %{buildroot}%{_datadir}/icons/hicolor/scalable/ap
 %files
 %dir %{_datadir}/loli
 %{_datadir}/loli/web_panel.py
+%{_datadir}/loli/loli/
 %{_datadir}/loli/logo.svg
 %{_datadir}/loli/logo-tray.svg
 %{_datadir}/loli/icons/
@@ -50,6 +53,13 @@ install -Dm0644 logo-tray.svg  %{buildroot}%{_datadir}/icons/hicolor/scalable/ap
 %{_datadir}/icons/hicolor/scalable/apps/loli.svg
 
 %changelog
+* Thu Jun 11 2026 s4rt4 <surat.sarta@gmail.com> - 1.0.2-1
+- Internal refactor (no user-facing changes): the two hand-maintained
+  per-distro files are unified into a single `loli/` package. Distro differences
+  live behind a Platform descriptor (loli/platform_spec.py) selected at runtime;
+  all privileged scripts are centralized in loli/scripts.py and locked by a
+  golden test-suite. web_panel.py is now a thin entry-point shim.
+
 * Thu Jun 11 2026 s4rt4 <surat.sarta@gmail.com> - 1.0.1-1
 - UI refresh: modern slate/Tailwind palette, softer radii, card drop shadows.
 - Page headers gain subtitles; status pills and inputs polished.

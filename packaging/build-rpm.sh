@@ -17,6 +17,8 @@ mkdir -p "$TOPDIR"/{BUILD,RPMS,SOURCES,SPECS,SRPMS} "$STAGE"
 
 # Stage the files that go into the package
 cp "$REPO_ROOT/web_panel.py"            "$STAGE/"
+cp -r "$REPO_ROOT/loli"                 "$STAGE/"
+rm -rf "$STAGE/loli/__pycache__"
 cp "$REPO_ROOT/logo.svg"                "$STAGE/"
 cp "$REPO_ROOT/logo-tray.svg"           "$STAGE/"
 cp -r "$REPO_ROOT/icons"                "$STAGE/"
