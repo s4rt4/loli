@@ -90,6 +90,46 @@ class Platform:
     def restart_web(self) -> str:
         return f"systemctl restart {self.web_svc}\n"
 
+    # ---- Discovery page: important file/dir locations ----
+    def reference_paths(self) -> list:
+        if self.id == "debian":
+            def first(pattern, fallback):
+                g = sorted(glob.glob(pattern))
+                return g[0] if g else fallback
+            return [
+                ("Apache Config", "/etc/apache2/apache2.conf"),
+                ("Apache sites-available", "/etc/apache2/sites-available"),
+                ("Nginx Config", "/etc/nginx/nginx.conf"),
+                ("PHP ini (apache)", first("/etc/php/*/apache2/php.ini", "/etc/php")),
+                ("PHP-FPM pool", first("/etc/php/*/fpm/pool.d/www.conf", "/etc/php")),
+                ("PHP ext dir", first("/etc/php/*/mods-available", "/etc/php")),
+                ("MariaDB Config", "/etc/mysql/mariadb.conf.d/50-server.cnf"),
+                ("MariaDB Data", "/var/lib/mysql"),
+                ("PostgreSQL Data", "/var/lib/postgresql"),
+                ("PostgreSQL Config", first("/etc/postgresql/*/main/postgresql.conf", "/etc/postgresql")),
+                ("Hosts File", "/etc/hosts"),
+            ]
+        return [
+            ("Apache Config", "/etc/httpd/conf/httpd.conf"),
+            ("Apache conf.d", "/etc/httpd/conf.d"),
+            ("Nginx Config", "/etc/nginx/nginx.conf"),
+            ("PHP ini", "/etc/php.ini"),
+            ("PHP-FPM pool", "/etc/php-fpm.d/www.conf"),
+            ("PHP ext dir", "/etc/php.d"),
+            ("MariaDB Config", "/etc/my.cnf.d/mariadb-server.cnf"),
+            ("MariaDB Data", "/var/lib/mysql"),
+            ("PostgreSQL Data", "/var/lib/pgsql/data"),
+            ("PostgreSQL Config", "/var/lib/pgsql/data/postgresql.conf"),
+            ("Hosts File", "/etc/hosts"),
+        ]
+
+    # ---- dashboard: is phpMyAdmin wired into apache? ----
+    def phpmyadmin_configured(self) -> bool:
+        if self.id == "debian":
+            return (os.path.exists("/etc/apache2/conf-enabled/phpmyadmin.conf")
+                    or os.path.exists("/etc/apache2/conf-available/phpmyadmin.conf"))
+        return os.path.exists("/etc/httpd/conf.d/phpMyAdmin.conf")
+
     # ---- Logs page: journalctl tabs ----
     def log_units(self) -> list:
         def jc(unit):

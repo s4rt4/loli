@@ -277,6 +277,25 @@ def test_enable_ssl():
     assert S.enable_ssl(DEBIAN) == "a2enmod ssl && a2ensite default-ssl && systemctl restart apache2"
 
 
+def test_php_switch():
+    assert S.php_switch(FEDORA, "8.2") == ""
+    assert S.php_switch(DEBIAN, "8.2") == (
+        "update-alternatives --set php /usr/bin/php8.2 || true\n"
+        "if command -v a2dismod >/dev/null 2>&1; then\n"
+        "a2dismod php* 2>/dev/null || true\n"
+        "a2enmod php8.2 2>/dev/null || true\n"
+        "systemctl restart apache2 || true\n"
+        "fi\n"
+        "systemctl stop php*-fpm 2>/dev/null || true\n"
+        "systemctl enable --now php8.2-fpm || true\n"
+        "if [ -f /etc/nginx/sites-available/default ]; then\n"
+        "sed -i -E 's#fastcgi_pass unix:/run/php/php[0-9.]+-fpm\\.sock;#"
+        "fastcgi_pass unix:/run/php/php8.2-fpm.sock;#g' /etc/nginx/sites-available/default\n"
+        "systemctl restart nginx || true\n"
+        "fi\n"
+    )
+
+
 def test_php_mailcatcher():
     common = (
         "echo '#!/bin/bash\ncat >> /tmp/php-mail.log\necho -e \"\\n---END OF MAIL---\\n\" "

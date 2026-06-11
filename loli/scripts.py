@@ -190,6 +190,28 @@ def enable_ssl(plat) -> str:
     return "dnf install -y mod_ssl && systemctl restart httpd"
 
 
+def php_switch(plat, target: str) -> str:
+    """Switch the active PHP version (Debian only; Fedora handles this with an
+    info dialog and never calls this)."""
+    if plat.id != "debian":
+        return ""
+    return (
+        f"update-alternatives --set php /usr/bin/php{target} || true\n"
+        "if command -v a2dismod >/dev/null 2>&1; then\n"
+        "a2dismod php* 2>/dev/null || true\n"
+        f"a2enmod php{target} 2>/dev/null || true\n"
+        "systemctl restart apache2 || true\n"
+        "fi\n"
+        "systemctl stop php*-fpm 2>/dev/null || true\n"
+        f"systemctl enable --now php{target}-fpm || true\n"
+        "if [ -f /etc/nginx/sites-available/default ]; then\n"
+        f"sed -i -E 's#fastcgi_pass unix:/run/php/php[0-9.]+-fpm\\.sock;#"
+        f"fastcgi_pass unix:/run/php/php{target}-fpm.sock;#g' /etc/nginx/sites-available/default\n"
+        "systemctl restart nginx || true\n"
+        "fi\n"
+    )
+
+
 def php_mailcatcher(plat) -> str:
     """Install a fake sendmail that logs mail, and point php.ini at it."""
     return (
