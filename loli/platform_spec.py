@@ -82,6 +82,12 @@ class Platform:
     def restart_web(self) -> str:
         return f"systemctl restart {self.web_svc}\n"
 
+    # ---- read the server DocumentRoot (grep differs per distro) ----
+    def docroot_grep_argv(self) -> list[str]:
+        if self.id == "debian":
+            return ["grep", "-m1", "-i", "DocumentRoot", self.apache_default_vhost]
+        return ["grep", "-m1", "^DocumentRoot", self.apache_default_vhost]
+
     # ---- php-fpm socket path ----
     def php_fpm_sock(self, ver: str = "") -> str:
         if self.id == "debian":

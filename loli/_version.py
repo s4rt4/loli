@@ -6,4 +6,4 @@ imports APP_VERSION from here.
 """
 
 APP_VERSION = "1.0.1"
-APP_NAME = "Loli"
+APP_NAME = "Loli — Localhost Linux"

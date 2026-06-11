@@ -113,6 +113,13 @@ def test_selinux_snippets():
         "setsebool -P httpd_can_network_connect_db on 2>/dev/null || true\n")
 
 
+def test_docroot_grep_argv():
+    assert FEDORA.docroot_grep_argv() == [
+        "grep", "-m1", "^DocumentRoot", "/etc/httpd/conf/httpd.conf"]
+    assert DEBIAN.docroot_grep_argv() == [
+        "grep", "-m1", "-i", "DocumentRoot", "/etc/apache2/sites-available/000-default.conf"]
+
+
 def test_detect_override():
     old = os.environ.get("LOLI_PLATFORM")
     try:
