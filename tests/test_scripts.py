@@ -7,12 +7,104 @@ Run standalone: ``python3 tests/test_scripts.py``  (also works under pytest).
 """
 
 import os
+import shlex
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from loli import scripts as S  # noqa: E402
 from loli.platform_spec import FEDORA, DEBIAN  # noqa: E402
+from loli.services import validate_port  # noqa: E402
+
+
+# --- Verbatim copies of the ORIGINAL save_prefs() script-building logic, used as
+#     ground truth for prefs_apply. Transcribed from web_panel.py (Fedora) and
+#     web_panel_deb.py (Debian). DO NOT "clean up" — they must mirror the originals.
+def _ref_fedora_prefs(ndir, ports, php_ver):
+    s = ""
+    p_ng = ports["nginx"]
+    if ndir:
+        ndir_escaped = shlex.quote(ndir)
+        s += f"sed -i 's|^DocumentRoot .*|DocumentRoot {ndir_escaped}|g' /etc/httpd/conf/httpd.conf\n"
+        s += f"cat << 'EOF' > /etc/httpd/conf.d/custom-panel-dir.conf\n<Directory {ndir_escaped}>\n    Options Indexes FollowSymLinks\n    AllowOverride All\n    Require all granted\n</Directory>\nEOF\n"
+        if p_ng and validate_port(p_ng):
+            s += f"if [ -d /etc/nginx/conf.d ]; then\ncat << 'EOF' > /etc/nginx/conf.d/custom-panel.conf\nserver {{\n    listen {p_ng};\n    root {ndir_escaped};\n    index index.php index.html index.htm;\n    server_name _;\n    location / {{ try_files $uri $uri/ =404; }}\n    location ~ \\.php$ {{\n        fastcgi_split_path_info ^(.+\\.php)(/.+)$;\n        fastcgi_pass unix:/run/php-fpm/www.sock;\n        fastcgi_index index.php;\n        include fastcgi_params;\n        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;\n    }}\n}}\nEOF\nfi\n"
+        if ndir.startswith("/home/"):
+            user_home = "/".join(ndir.split("/")[:3])
+            user_home_escaped = shlex.quote(user_home)
+            s += f"chmod +x {user_home_escaped}\nchown -R apache:apache {ndir_escaped} || true\nchmod -R 755 {ndir_escaped} || true\n"
+            s += f"command -v semanage >/dev/null 2>&1 && semanage fcontext -a -t httpd_sys_content_t {ndir_escaped}'(/.*)?' 2>/dev/null; command -v restorecon >/dev/null 2>&1 && restorecon -R {ndir_escaped} || true\n"
+    if p_ap := ports["apache2"]:
+        if validate_port(p_ap):
+            s += f"sed -i 's/^Listen .*/Listen {p_ap}/g' /etc/httpd/conf/httpd.conf\n"
+            s += f"command -v semanage >/dev/null 2>&1 && semanage port -a -t http_port_t -p tcp {p_ap} 2>/dev/null || true\n"
+            s += "systemctl restart httpd || true\n"
+    if p_ma := ports["mariadb"]:
+        if validate_port(p_ma):
+            s += f"printf '[mysqld]\\nport = {p_ma}\\n' > /etc/my.cnf.d/custom-panel.cnf\nsystemctl restart mariadb || true\n"
+    if p_pg := ports["postgresql"]:
+        if validate_port(p_pg):
+            s += f"sed -i -E 's/^#?port = [0-9]+/port = {p_pg}/g' /var/lib/pgsql/data/postgresql.conf\nsystemctl restart postgresql || true\n"
+    if p_mg := ports["mongod"]:
+        if validate_port(p_mg):
+            s += f"sed -i -E 's/^  port: [0-9]+/  port: {p_mg}/g' /etc/mongod.conf\nsystemctl restart mongod || true\n"
+    if ndir or p_ng:
+        s += "systemctl restart nginx || true\n"
+    return s
+
+
+def _ref_debian_prefs(ndir, ports, php_ver):
+    s = ""
+    p_ng = ports["nginx"]
+    if ndir:
+        ndir_escaped = shlex.quote(ndir)
+        s += f"sed -i 's|DocumentRoot .*|DocumentRoot {ndir_escaped}|g' /etc/apache2/sites-available/000-default.conf\n"
+        s += f"cat << 'EOF' > /etc/apache2/conf-available/custom-panel-dir.conf\n<Directory {ndir_escaped}>\n    Options Indexes FollowSymLinks\n    AllowOverride All\n    Require all granted\n</Directory>\nEOF\n"
+        s += "a2enconf custom-panel-dir || true\n"
+        if p_ng and validate_port(p_ng):
+            s += f"if [ -d /etc/nginx/sites-available ]; then\ncat << 'EOF' > /etc/nginx/sites-available/default\nserver {{\n    listen {p_ng} default_server;\n    root {ndir_escaped};\n    index index.php index.html index.htm;\n    server_name _;\n    location / {{ try_files $uri $uri/ =404; }}\n    location ~ \\.php$ {{\n        include snippets/fastcgi-php.conf;\n        fastcgi_pass unix:/run/php/php{php_ver}-fpm.sock;\n    }}\n}}\nEOF\nfi\n"
+        if ndir.startswith("/home/"):
+            user_home = "/".join(ndir.split("/")[:3])
+            user_home_escaped = shlex.quote(user_home)
+            s += f"chmod +x {user_home_escaped}\nchown -R www-data:www-data {ndir_escaped} || true\nchmod -R 755 {ndir_escaped} || true\n"
+    if p_ap := ports["apache2"]:
+        if validate_port(p_ap):
+            s += f"sed -i 's/^Listen .*/Listen {p_ap}/g' /etc/apache2/ports.conf\n"
+            s += f"sed -i -E 's/<VirtualHost \\*:.*>/<VirtualHost *:{p_ap}>/g' /etc/apache2/sites-available/000-default.conf\n"
+            s += "systemctl restart apache2 || true\n"
+    if p_ma := ports["mariadb"]:
+        if validate_port(p_ma):
+            s += f"sed -i -E 's/^port\\s*=.*/port = {p_ma}/g' /etc/mysql/mariadb.conf.d/50-server.cnf\nsystemctl restart mariadb || true\n"
+    if p_pg := ports["postgresql"]:
+        if validate_port(p_pg):
+            s += f"sed -i -E 's/^#?port = [0-9]+/port = {p_pg}/g' /etc/postgresql/*/main/postgresql.conf\nsystemctl restart postgresql || true\n"
+    if p_mg := ports["mongod"]:
+        if validate_port(p_mg):
+            s += f"sed -i -E 's/^  port: [0-9]+/  port: {p_mg}/g' /etc/mongod.conf\nsystemctl restart mongod || true\n"
+    if ndir or p_ng:
+        s += "systemctl restart nginx || true\n"
+    return s
+
+
+_PREFS_CASES = [
+    ("/home/u/www", {"nginx": "8080", "apache2": "8081", "mariadb": "3307",
+                     "postgresql": "5433", "mongod": "27018"}, "8.2"),
+    ("/var/www/site", {"nginx": "", "apache2": "", "mariadb": "",
+                       "postgresql": "", "mongod": ""}, "8.4"),
+    ("", {"nginx": "9000", "apache2": "8000", "mariadb": "", "postgresql": "5432",
+          "mongod": ""}, "7.4"),
+    ("", {"nginx": "", "apache2": "", "mariadb": "", "postgresql": "", "mongod": ""}, "8.4"),
+    ("/home/dev/app", {"nginx": "bad", "apache2": "70000", "mariadb": "3306",
+                       "postgresql": "", "mongod": "27017"}, "8.1"),
+]
+
+
+def test_prefs_apply():
+    for ndir, ports, php_ver in _PREFS_CASES:
+        assert S.prefs_apply(FEDORA, ndir, ports, php_ver) == _ref_fedora_prefs(ndir, ports, php_ver), \
+            f"fedora prefs mismatch for {ndir!r} {ports!r}"
+        assert S.prefs_apply(DEBIAN, ndir, ports, php_ver) == _ref_debian_prefs(ndir, ports, php_ver), \
+            f"debian prefs mismatch for {ndir!r} {ports!r}"
 
 
 def test_mongo_install():

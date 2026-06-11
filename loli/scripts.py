@@ -8,6 +8,73 @@ tests/test_scripts.py) so unifying the two files changes no behaviour.
 
 import shlex
 
+from .services import validate_port
+
+
+def prefs_apply(plat, ndir: str, ports: dict, php_ver: str) -> str:
+    """Build the Preferences 'apply' script: optional custom docroot + per-service
+    port changes. ``ports`` keys: nginx, apache2, mariadb, postgresql, mongod."""
+    s = ""
+    p_ng = ports.get("nginx", "")
+    if ndir:
+        ndir_escaped = shlex.quote(ndir)
+        s += (f"sed -i 's|{plat.docroot_sed_anchor}DocumentRoot .*|DocumentRoot {ndir_escaped}|g' "
+              f"{plat.apache_default_vhost}\n")
+        s += (f"cat << 'EOF' > {plat.apache_conf_available}/custom-panel-dir.conf\n"
+              f"<Directory {ndir_escaped}>\n    Options Indexes FollowSymLinks\n"
+              "    AllowOverride All\n    Require all granted\n</Directory>\nEOF\n")
+        s += plat.apache_enable_conf("custom-panel-dir")
+        if p_ng and validate_port(p_ng):
+            if plat.id == "debian":
+                s += f"if [ -d /etc/nginx/sites-available ]; then\ncat << 'EOF' > /etc/nginx/sites-available/default\nserver {{\n    listen {p_ng} default_server;\n    root {ndir_escaped};\n    index index.php index.html index.htm;\n    server_name _;\n    location / {{ try_files $uri $uri/ =404; }}\n    location ~ \\.php$ {{\n        include snippets/fastcgi-php.conf;\n        fastcgi_pass unix:/run/php/php{php_ver}-fpm.sock;\n    }}\n}}\nEOF\nfi\n"
+            else:
+                s += f"if [ -d /etc/nginx/conf.d ]; then\ncat << 'EOF' > /etc/nginx/conf.d/custom-panel.conf\nserver {{\n    listen {p_ng};\n    root {ndir_escaped};\n    index index.php index.html index.htm;\n    server_name _;\n    location / {{ try_files $uri $uri/ =404; }}\n    location ~ \\.php$ {{\n        fastcgi_split_path_info ^(.+\\.php)(/.+)$;\n        fastcgi_pass unix:/run/php-fpm/www.sock;\n        fastcgi_index index.php;\n        include fastcgi_params;\n        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;\n    }}\n}}\nEOF\nfi\n"
+        if ndir.startswith("/home/"):
+            user_home = "/".join(ndir.split("/")[:3])
+            user_home_escaped = shlex.quote(user_home)
+            s += (f"chmod +x {user_home_escaped}\nchown -R {plat.web_user}:{plat.web_user} "
+                  f"{ndir_escaped} || true\nchmod -R 755 {ndir_escaped} || true\n")
+            if plat.has_selinux:
+                s += (f"command -v semanage >/dev/null 2>&1 && semanage fcontext -a -t "
+                      f"httpd_sys_content_t {ndir_escaped}'(/.*)?' 2>/dev/null; "
+                      f"command -v restorecon >/dev/null 2>&1 && restorecon -R {ndir_escaped} || true\n")
+
+    p_ap = ports.get("apache2", "")
+    if p_ap and validate_port(p_ap):
+        if plat.id == "debian":
+            s += f"sed -i 's/^Listen .*/Listen {p_ap}/g' /etc/apache2/ports.conf\n"
+            s += (f"sed -i -E 's/<VirtualHost \\*:.*>/<VirtualHost *:{p_ap}>/g' "
+                  "/etc/apache2/sites-available/000-default.conf\n")
+            s += "systemctl restart apache2 || true\n"
+        else:
+            s += f"sed -i 's/^Listen .*/Listen {p_ap}/g' /etc/httpd/conf/httpd.conf\n"
+            s += (f"command -v semanage >/dev/null 2>&1 && semanage port -a -t http_port_t "
+                  f"-p tcp {p_ap} 2>/dev/null || true\n")
+            s += "systemctl restart httpd || true\n"
+
+    p_ma = ports.get("mariadb", "")
+    if p_ma and validate_port(p_ma):
+        if plat.id == "debian":
+            s += (f"sed -i -E 's/^port\\s*=.*/port = {p_ma}/g' "
+                  "/etc/mysql/mariadb.conf.d/50-server.cnf\nsystemctl restart mariadb || true\n")
+        else:
+            s += (f"printf '[mysqld]\\nport = {p_ma}\\n' > /etc/my.cnf.d/custom-panel.cnf\n"
+                  "systemctl restart mariadb || true\n")
+
+    p_pg = ports.get("postgresql", "")
+    if p_pg and validate_port(p_pg):
+        s += (f"sed -i -E 's/^#?port = [0-9]+/port = {p_pg}/g' {plat.pg_conf_glob}\n"
+              "systemctl restart postgresql || true\n")
+
+    p_mg = ports.get("mongod", "")
+    if p_mg and validate_port(p_mg):
+        s += (f"sed -i -E 's/^  port: [0-9]+/  port: {p_mg}/g' /etc/mongod.conf\n"
+              "systemctl restart mongod || true\n")
+
+    if ndir or p_ng:
+        s += "systemctl restart nginx || true\n"
+    return s
+
 
 def mongo_install(plat) -> str:
     """Register the MongoDB repo and install mongodb-org."""

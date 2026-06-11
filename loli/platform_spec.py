@@ -12,7 +12,9 @@ code paths on a single machine).
 
 from __future__ import annotations
 
+import glob
 import os
+import re
 import shlex
 from dataclasses import dataclass, field
 
@@ -39,6 +41,9 @@ class Platform:
     phpmyadmin_conf: str         # apache conf file we write for phpMyAdmin
     php_ini_glob: str            # shell glob(s) of php.ini files to patch
     php_fpm_unit: str            # systemctl unit name for php-fpm
+    pg_log_unit: str             # journalctl unit for postgresql
+    apache_conf_available: str   # dir for drop-in confs (conf.d / conf-available)
+    docroot_sed_anchor: str      # "^" on Fedora, "" on Debian (DocumentRoot sed)
 
     # Dashboard service rows: (unit, label, icon)
     services: tuple = field(default_factory=tuple)
@@ -84,6 +89,64 @@ class Platform:
 
     def restart_web(self) -> str:
         return f"systemctl restart {self.web_svc}\n"
+
+    # ---- Logs page: journalctl tabs ----
+    def log_units(self) -> list:
+        def jc(unit):
+            return ["journalctl", "-u", unit, "-n", "300", "--no-pager"]
+        return [
+            ("Apache", jc(self.web_svc)),
+            ("PHP-FPM", jc(self.php_fpm_unit)),
+            ("MariaDB", jc("mariadb")),
+            ("PostgreSQL", jc(self.pg_log_unit)),
+            ("Nginx", jc("nginx")),
+        ]
+
+    # ---- Config Editor: label -> file path (some entries are globbed live) ----
+    def config_files(self) -> dict:
+        if self.id == "debian":
+            files = {
+                "Apache: Main Config": "/etc/apache2/apache2.conf",
+                "Apache: Ports Config": "/etc/apache2/ports.conf",
+                "Apache: Default VHost": "/etc/apache2/sites-available/000-default.conf",
+                "Apache: Panel VHost": "/etc/apache2/conf-available/custom-panel-dir.conf",
+                "Nginx: Main Config": "/etc/nginx/nginx.conf",
+                "Nginx: Default VHost": "/etc/nginx/sites-available/default",
+                "MariaDB: Server Config": "/etc/mysql/mariadb.conf.d/50-server.cnf",
+                "MongoDB: Main Config": "/etc/mongod.conf",
+                "OS: Hosts File": "/etc/hosts",
+            }
+            for php_ini in sorted(glob.glob("/etc/php/*/apache2/php.ini")
+                                  + glob.glob("/etc/php/*/fpm/php.ini")
+                                  + glob.glob("/etc/php/*/cli/php.ini")):
+                m = re.search(r"/etc/php/([^/]+)/([^/]+)/php\.ini", php_ini)
+                if m:
+                    files[f"PHP {m.group(1)}: {m.group(2)} php.ini"] = php_ini
+            for fpm_pool in sorted(glob.glob("/etc/php/*/fpm/pool.d/www.conf")):
+                m = re.search(r"/etc/php/([^/]+)/", fpm_pool)
+                if m:
+                    files[f"PHP {m.group(1)}: FPM Pool (www)"] = fpm_pool
+            pg = sorted(glob.glob("/etc/postgresql/*/main/postgresql.conf"))
+            if pg:
+                files["PostgreSQL: Config"] = pg[0]
+            return files
+        files = {
+            "Apache: Main Config": "/etc/httpd/conf/httpd.conf",
+            "Apache: PHP Module": "/etc/httpd/conf.d/php.conf",
+            "Apache: SSL Config": "/etc/httpd/conf.d/ssl.conf",
+            "Apache: Panel VHost": "/etc/httpd/conf.d/custom-panel-dir.conf",
+            "Nginx: Main Config": "/etc/nginx/nginx.conf",
+            "Nginx: Panel VHost": "/etc/nginx/conf.d/custom-panel.conf",
+            "MariaDB: Server Config": "/etc/my.cnf.d/mariadb-server.cnf",
+            "PHP: php.ini": "/etc/php.ini",
+            "PHP: FPM Pool (www)": "/etc/php-fpm.d/www.conf",
+            "MongoDB: Main Config": "/etc/mongod.conf",
+            "OS: Hosts File": "/etc/hosts",
+        }
+        pg = glob.glob("/var/lib/pgsql/data/postgresql.conf") + glob.glob("/var/lib/pgsql/*/data/postgresql.conf")
+        if pg:
+            files["PostgreSQL: Config"] = pg[0]
+        return files
 
     # ---- read the server DocumentRoot (grep differs per distro) ----
     def docroot_grep_argv(self) -> list[str]:
@@ -162,6 +225,9 @@ FEDORA = Platform(
     phpmyadmin_conf="/etc/httpd/conf.d/phpMyAdmin.conf",
     php_ini_glob="/etc/php.ini",
     php_fpm_unit="php-fpm",
+    pg_log_unit="postgresql",
+    apache_conf_available="/etc/httpd/conf.d",
+    docroot_sed_anchor="^",
     services=(
         ("httpd", "Apache Web Server", "fa5s.server"),
         ("nginx", "Nginx Web Server", "fa5s.server"),
@@ -197,6 +263,9 @@ DEBIAN = Platform(
     phpmyadmin_conf="/etc/apache2/conf-available/phpmyadmin.conf",
     php_ini_glob="/etc/php/*/apache2/php.ini /etc/php/*/fpm/php.ini",
     php_fpm_unit="php*-fpm",
+    pg_log_unit="postgresql*",
+    apache_conf_available="/etc/apache2/conf-available",
+    docroot_sed_anchor="",
     services=(
         ("apache2", "Apache Web Server", "fa5s.server"),
         ("nginx", "Nginx Web Server", "fa5s.server"),

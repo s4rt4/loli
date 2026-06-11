@@ -113,6 +113,35 @@ def test_selinux_snippets():
         "setsebool -P httpd_can_network_connect_db on 2>/dev/null || true\n")
 
 
+def test_log_units():
+    def jc(u):
+        return ["journalctl", "-u", u, "-n", "300", "--no-pager"]
+    assert FEDORA.log_units() == [
+        ("Apache", jc("httpd")), ("PHP-FPM", jc("php-fpm")),
+        ("MariaDB", jc("mariadb")), ("PostgreSQL", jc("postgresql")),
+        ("Nginx", jc("nginx"))]
+    assert DEBIAN.log_units() == [
+        ("Apache", jc("apache2")), ("PHP-FPM", jc("php*-fpm")),
+        ("MariaDB", jc("mariadb")), ("PostgreSQL", jc("postgresql*")),
+        ("Nginx", jc("nginx"))]
+
+
+def test_config_files_static_entries():
+    # Only the non-globbed (static) entries are pinned; PostgreSQL/PHP entries
+    # depend on the live filesystem.
+    f = FEDORA.config_files()
+    assert f["Apache: Main Config"] == "/etc/httpd/conf/httpd.conf"
+    assert f["MariaDB: Server Config"] == "/etc/my.cnf.d/mariadb-server.cnf"
+    assert f["PHP: php.ini"] == "/etc/php.ini"
+    assert f["OS: Hosts File"] == "/etc/hosts"
+    d = DEBIAN.config_files()
+    assert d["Apache: Main Config"] == "/etc/apache2/apache2.conf"
+    assert d["Apache: Default VHost"] == "/etc/apache2/sites-available/000-default.conf"
+    assert d["MariaDB: Server Config"] == "/etc/mysql/mariadb.conf.d/50-server.cnf"
+    assert d["OS: Hosts File"] == "/etc/hosts"
+    assert "PHP: php.ini" not in d  # Debian uses per-version globbed entries
+
+
 def test_docroot_grep_argv():
     assert FEDORA.docroot_grep_argv() == [
         "grep", "-m1", "^DocumentRoot", "/etc/httpd/conf/httpd.conf"]
