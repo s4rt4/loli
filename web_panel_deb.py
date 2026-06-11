@@ -25,8 +25,8 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QStackedWidget, QTextEdit, QLineEdit, QFileDialog, QComboBox,
                              QProgressBar, QGridLayout, QCheckBox, QSystemTrayIcon, QMenu, 
                              QScrollArea, QTableWidget, QTableWidgetItem, QHeaderView, QTabWidget,
-                             QSizePolicy)
-from PyQt6.QtCore import QTimer, Qt, QSize, QThread, pyqtSignal
+                             QSizePolicy, QGraphicsDropShadowEffect)
+from PyQt6.QtCore import QTimer, Qt, QSize, QThread, pyqtSignal, QByteArray
 from PyQt6.QtGui import QFont, QIcon, QAction, QColor, QPixmap, QPainter
 from PyQt6.QtSvg import QSvgRenderer
 
@@ -49,45 +49,47 @@ MAILPIT_UI_PORT = 8025
 MAILPIT_SMTP_PORT = 1025
 
 STYLESHEET = """
-QMainWindow { background-color: #f4f6f9; }
-QWidget { color: #2c3e50; }
-QWidget#Sidebar { background-color: #2c3e50; color: white; }
+QMainWindow { background-color: #f8fafc; }
+QWidget { color: #1e293b; }
+QWidget#Sidebar { background-color: #1e293b; color: white; }
 QWidget#Sidebar QLabel { color: white; }
-QPushButton#MenuBtn { text-align: left; padding: 12px 20px; background-color: transparent; border: none; color: #bdc3c7; font-size: 14px; border-radius: 0px; }
-QPushButton#MenuBtn:hover { background-color: #34495e; color: white; }
-QPushButton#MenuBtn:checked { background-color: #3498db; color: white; font-weight: bold; border-left: 4px solid white; }
-QFrame#Card { background-color: white; border-radius: 10px; border: 1px solid #dcdde1; }
-QLabel#H1 { font-size: 18px; font-weight: bold; color: #2c3e50; margin-bottom: 15px; }
-QLineEdit, QComboBox { background-color: white; color: #2c3e50; border: 1px solid #bdc3c7; padding: 6px; border-radius: 4px; }
+QPushButton#MenuBtn { text-align: left; padding: 12px 20px; background-color: transparent; border: none; color: #94a3b8; font-size: 14px; border-radius: 0px; }
+QPushButton#MenuBtn:hover { background-color: #334155; color: white; }
+QPushButton#MenuBtn:checked { background-color: #3b82f6; color: white; font-weight: bold; border-left: 4px solid white; }
+QFrame#Card { background-color: white; border-radius: 12px; border: 1px solid #e2e8f0; }
+QLabel#H1 { font-size: 18px; font-weight: bold; color: #1e293b; margin-bottom: 15px; }
+QLineEdit, QComboBox { background-color: white; color: #1e293b; border: 1px solid #cbd5e1; padding: 7px; border-radius: 6px; }
+QLineEdit:focus, QComboBox:focus { border: 1px solid #3b82f6; }
 QComboBox::drop-down { border: none; }
-QCheckBox { color: #2c3e50; }
-QTextEdit { background-color: #2c3e50; color: #ecf0f1; border-radius: 5px; padding: 10px; font-family: monospace; }
-QPushButton { padding: 8px 15px; border-radius: 5px; font-size: 13px; font-weight: 600; border: 1px solid #bdc3c7; background-color: #ecf0f1; color: #2c3e50; }
-QPushButton:hover { background-color: #dfe6e9; }
-QPushButton#BtnPrimary { background-color: #3498db; color: white; border: 1px solid #2980b9; }
-QPushButton#BtnPrimary:hover { background-color: #2980b9; }
-QPushButton#BtnSuccess { background-color: #2ecc71; color: white; border: 1px solid #27ae60; }
-QPushButton#BtnSuccess:hover { background-color: #27ae60; }
-QPushButton#BtnDanger { background-color: #e74c3c; color: white; border: 1px solid #c0392b; }
-QPushButton#BtnDanger:hover { background-color: #c0392b; }
-QPushButton#BtnGhost { background-color: white; border: 1px solid #c4d3e0; color: #34495e; font-weight: 600; }
-QPushButton#BtnGhost:hover { background-color: #eaf2fa; border: 1px solid #3498db; color: #2980b9; }
-QLabel#PageTitle { font-size: 20px; font-weight: bold; color: #2c3e50; }
-QLabel#Hint { color: #95a5a6; font-size: 12px; }
+QCheckBox { color: #1e293b; }
+QTextEdit { background-color: #1e293b; color: #e2e8f0; border-radius: 8px; padding: 10px; font-family: monospace; }
+QPushButton { padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; border: 1px solid #cbd5e1; background-color: #f1f5f9; color: #334155; }
+QPushButton:hover { background-color: #e2e8f0; }
+QPushButton#BtnPrimary { background-color: #3b82f6; color: white; border: none; }
+QPushButton#BtnPrimary:hover { background-color: #2563eb; }
+QPushButton#BtnSuccess { background-color: #22c55e; color: white; border: none; }
+QPushButton#BtnSuccess:hover { background-color: #16a34a; }
+QPushButton#BtnDanger { background-color: #ef4444; color: white; border: none; }
+QPushButton#BtnDanger:hover { background-color: #dc2626; }
+QPushButton#BtnGhost { background-color: white; border: 1px solid #cbd5e1; color: #334155; font-weight: 600; }
+QPushButton#BtnGhost:hover { background-color: #eff6ff; border: 1px solid #3b82f6; color: #2563eb; }
+QLabel#PageTitle { font-size: 22px; font-weight: bold; color: #1e293b; }
+QLabel#PageSub { color: #94a3b8; font-size: 12px; }
+QLabel#Hint { color: #94a3b8; font-size: 12px; }
 QLabel#Brand { color: white; font-size: 20px; font-weight: bold; }
-QLabel#BrandSub { color: #8d9eb0; font-size: 9px; font-weight: bold; letter-spacing: 2px; }
-QPushButton#SideQuit { text-align: left; padding: 10px 20px; background-color: transparent; border: none; color: #8d9eb0; font-size: 13px; }
-QPushButton#SideQuit:hover { background-color: #34495e; color: #e74c3c; }
-QLabel#StatusRun { color: #1e8449; font-weight: bold; font-size: 11px; background-color: #eafaf1; border: 1px solid #abebc6; border-radius: 12px; padding: 0px 13px; }
-QLabel#StatusStop { color: #c0392b; font-weight: bold; font-size: 11px; background-color: #fdedec; border: 1px solid #f5b7b1; border-radius: 12px; padding: 0px 13px; }
-QLabel#StatusNA { color: #7f8c8d; font-weight: bold; font-size: 11px; background-color: #eef1f3; border: 1px solid #d5dbdb; border-radius: 12px; padding: 0px 13px; }
-QFrame#Row { background-color: transparent; border-radius: 6px; }
-QFrame#Row:hover { background-color: #f5f8fc; }
-QPushButton#BtnQuitGhost { background-color: white; border: 1px solid #f1c0bb; color: #e74c3c; }
-QPushButton#BtnQuitGhost:hover { background-color: #fdedec; border: 1px solid #e74c3c; color: #c0392b; }
-QProgressBar#SideBar { background-color: #1a252f; border: none; border-radius: 4px; color: white; text-align: center; font-size: 10px; font-weight: bold; }
-QTableWidget { background-color: white; color: #2c3e50; border: 1px solid #bdc3c7; border-radius: 5px; gridline-color: #ecf0f1; }
-QHeaderView::section { background-color: #ecf0f1; color: #2c3e50; font-weight: bold; padding: 5px; border: 1px solid #bdc3c7; }
+QLabel#BrandSub { color: #94a3b8; font-size: 9px; font-weight: bold; letter-spacing: 2px; }
+QPushButton#SideQuit { text-align: left; padding: 10px 20px; background-color: transparent; border: none; color: #94a3b8; font-size: 13px; }
+QPushButton#SideQuit:hover { background-color: #334155; color: #ef4444; }
+QLabel#StatusRun { color: #15803d; font-weight: bold; font-size: 11px; background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 3px 13px; }
+QLabel#StatusStop { color: #b91c1c; font-weight: bold; font-size: 11px; background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; padding: 3px 13px; }
+QLabel#StatusNA { color: #64748b; font-weight: bold; font-size: 11px; background-color: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 12px; padding: 3px 13px; }
+QFrame#Row { background-color: transparent; border-radius: 8px; }
+QFrame#Row:hover { background-color: #f1f5f9; }
+QPushButton#BtnQuitGhost { background-color: white; border: 1px solid #fecaca; color: #ef4444; }
+QPushButton#BtnQuitGhost:hover { background-color: #fef2f2; border: 1px solid #ef4444; color: #dc2626; }
+QProgressBar#SideBar { background-color: #0f172a; border: none; border-radius: 4px; color: white; text-align: center; font-size: 10px; font-weight: bold; }
+QTableWidget { background-color: white; color: #1e293b; border: 1px solid #e2e8f0; border-radius: 8px; gridline-color: #f1f5f9; }
+QHeaderView::section { background-color: #f1f5f9; color: #334155; font-weight: bold; padding: 6px; border: none; border-bottom: 1px solid #e2e8f0; }
 """
 
 def validate_domain(domain: str) -> bool:
@@ -170,12 +172,12 @@ def run_async(parent, fn, on_done=None):
     w.start()
     return w
 
-def load_logo_pixmap(size: int):
-    """Render logo.svg ke pixmap persegi penuh (tanpa terpotong seperti QIcon.pixmap)."""
-    if not os.path.exists(LOGO_PATH):
+def load_logo_pixmap(size: int, path: str = LOGO_PATH):
+    """Render SVG logo ke pixmap persegi penuh (tanpa terpotong seperti QIcon.pixmap)."""
+    if not os.path.exists(path):
         return None
     try:
-        renderer = QSvgRenderer(LOGO_PATH)
+        renderer = QSvgRenderer(path)
         pm = QPixmap(size, size)
         pm.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pm)
@@ -184,8 +186,53 @@ def load_logo_pixmap(size: int):
         return pm
     except Exception as e:
         logging.warning(f"Failed to render logo: {e}")
-        pm = QIcon(LOGO_PATH).pixmap(QSize(size, size))
+        pm = QIcon(path).pixmap(QSize(size, size))
         return pm if not pm.isNull() else None
+
+ICON_DIR = os.path.join(BASE_DIR, "icons")
+
+# Peta nama ikon Font Awesome -> file SVG lokal (icons/<name>.svg).
+# Tombol yang pakai nama ini otomatis memakai SVG bila tersedia.
+_SVG_FOR_QTA = {
+    "fa5s.play": "start",
+    "fa5s.stop": "stop",
+    "fa5s.sync": "restart",
+    "fa5s.external-link-alt": "open",
+}
+
+def svg_icon(name, color="#cbd5e1", size=24):
+    """Render Lucide SVG (icons/<name>.svg) ke QIcon dengan warna `color`.
+    'currentColor' di-replace agar bisa di-tint. Return None bila file tak ada."""
+    if not name:
+        return None
+    path = os.path.join(ICON_DIR, name + ".svg")
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = f.read().replace("currentColor", color)
+        renderer = QSvgRenderer(QByteArray(data.encode("utf-8")))
+        pm = QPixmap(size, size)
+        pm.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pm)
+        renderer.render(painter)
+        painter.end()
+        return QIcon(pm)
+    except Exception as e:
+        logging.warning(f"svg_icon failed for {name}: {e}")
+        return None
+
+def app_icon(qta_name, color="#334155", size=24):
+    """Ikon SVG lokal bila ada mapping & file-nya tersedia, jika tidak fallback ke qtawesome."""
+    svg = _SVG_FOR_QTA.get(qta_name)
+    if svg:
+        ic = svg_icon(svg, color, size)
+        if ic is not None:
+            return ic
+    if HAS_ICONS:
+        return qta.icon(qta_name, color=color)
+    return QIcon()
+
 
 def get_web_root() -> str:
     try:
@@ -267,6 +314,21 @@ class Card(QFrame):
         self.layout.setContentsMargins(15, 15, 15, 15)
         self.layout.setSpacing(10)
         self.setLayout(self.layout)
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(24)
+        shadow.setColor(QColor(15, 23, 42, 28))
+        shadow.setOffset(0, 4)
+        self.setGraphicsEffect(shadow)
+
+def title_block(title, subtitle):
+    """Judul halaman + subtitle abu di bawahnya, sebagai satu widget."""
+    w = QWidget()
+    v = QVBoxLayout(w)
+    v.setContentsMargins(0, 0, 0, 0)
+    v.setSpacing(2)
+    v.addWidget(QLabel(title, objectName="PageTitle"))
+    v.addWidget(QLabel(subtitle, objectName="PageSub"))
+    return w
 
 class DashboardPage(QWidget):
     def __init__(self):
@@ -278,23 +340,22 @@ class DashboardPage(QWidget):
         layout.setSpacing(15)
 
         header = QHBoxLayout()
-        title = QLabel("Dashboard", objectName="PageTitle")
-        header.addWidget(title)
+        header.addWidget(title_block("Dashboard", "Service status & quick controls"))
         header.addStretch()
         btn_local = QPushButton(" Open Localhost")
         btn_local.setObjectName("BtnGhost")
         btn_local.setCursor(Qt.CursorShape.PointingHandCursor)
-        if HAS_ICONS: btn_local.setIcon(qta.icon("fa5s.globe", color="#3498db"))
+        if HAS_ICONS: btn_local.setIcon(app_icon("fa5s.globe", color="#3b82f6"))
         btn_local.clicked.connect(lambda: webbrowser.open("http://localhost"))
         btn_root = QPushButton(" Open Root Dir")
         btn_root.setObjectName("BtnGhost")
         btn_root.setCursor(Qt.CursorShape.PointingHandCursor)
-        if HAS_ICONS: btn_root.setIcon(qta.icon("fa5s.folder-open", color="#3498db"))
+        if HAS_ICONS: btn_root.setIcon(app_icon("fa5s.folder-open", color="#3b82f6"))
         btn_root.clicked.connect(self.open_root_dir)
         btn_quit = QPushButton(" Quit")
         btn_quit.setObjectName("BtnQuitGhost")
         btn_quit.setCursor(Qt.CursorShape.PointingHandCursor)
-        if HAS_ICONS: btn_quit.setIcon(qta.icon("fa5s.power-off", color="#e74c3c"))
+        if HAS_ICONS: btn_quit.setIcon(app_icon("fa5s.power-off", color="#ef4444"))
         btn_quit.clicked.connect(lambda: self.window().force_quit())
         header.addWidget(btn_local)
         header.addWidget(btn_root)
@@ -306,7 +367,7 @@ class DashboardPage(QWidget):
 
         row_pma = QHBoxLayout()
         lbl_pma = QLabel("phpMyAdmin (MySQL/MariaDB)")
-        lbl_pma.setStyleSheet("font-weight: 600; font-size: 14px; color: #2c3e50;")
+        lbl_pma.setStyleSheet("font-weight: 600; font-size: 14px; color: #1e293b;")
         lbl_pma.setFixedWidth(224)
         row_pma.addWidget(lbl_pma)
         self.lbl_pma_status = QLabel("...")
@@ -317,12 +378,12 @@ class DashboardPage(QWidget):
         btn_pma_open = QPushButton(" Open")
         btn_pma_open.setObjectName("BtnPrimary")
         btn_pma_open.setFixedWidth(92)
-        if HAS_ICONS: btn_pma_open.setIcon(qta.icon("fa5s.external-link-alt", color="white"))
+        if HAS_ICONS: btn_pma_open.setIcon(app_icon("fa5s.external-link-alt", color="white"))
         btn_pma_open.clicked.connect(lambda: webbrowser.open("http://localhost/phpmyadmin"))
         self.btn_pma_setup = QPushButton(" Setup / Repair")
         self.btn_pma_setup.setObjectName("BtnGhost")
         self.btn_pma_setup.setFixedWidth(148)
-        if HAS_ICONS: self.btn_pma_setup.setIcon(qta.icon("fa5s.wrench", color="#34495e"))
+        if HAS_ICONS: self.btn_pma_setup.setIcon(app_icon("fa5s.wrench", color="#334155"))
         self.btn_pma_setup.clicked.connect(self.on_pma_action)
         btn_pma_setup = self.btn_pma_setup
         row_pma.addWidget(btn_pma_open)
@@ -333,12 +394,12 @@ class DashboardPage(QWidget):
 
         line_db = QFrame()
         line_db.setFrameShape(QFrame.Shape.HLine)
-        line_db.setStyleSheet("color: #ecf0f1;")
+        line_db.setStyleSheet("color: #e2e8f0;")
         card_db.layout.addWidget(line_db)
 
         row_pg = QHBoxLayout()
         lbl_pg = QLabel("pgweb (PostgreSQL)")
-        lbl_pg.setStyleSheet("font-weight: 600; font-size: 14px; color: #2c3e50;")
+        lbl_pg.setStyleSheet("font-weight: 600; font-size: 14px; color: #1e293b;")
         lbl_pg.setFixedWidth(224)
         row_pg.addWidget(lbl_pg)
         self.lbl_pg_status = QLabel("● STOPPED")
@@ -349,12 +410,12 @@ class DashboardPage(QWidget):
         self.btn_pg_toggle = QPushButton(" Start")
         self.btn_pg_toggle.setObjectName("BtnSuccess")
         self.btn_pg_toggle.setFixedWidth(92)
-        if HAS_ICONS: self.btn_pg_toggle.setIcon(qta.icon("fa5s.play", color="white"))
+        if HAS_ICONS: self.btn_pg_toggle.setIcon(app_icon("fa5s.play", color="white"))
         self.btn_pg_toggle.clicked.connect(self.toggle_pgweb)
         btn_pg_open = QPushButton(" Open")
         btn_pg_open.setObjectName("BtnGhost")
         btn_pg_open.setFixedWidth(92)
-        if HAS_ICONS: btn_pg_open.setIcon(qta.icon("fa5s.external-link-alt", color="#34495e"))
+        if HAS_ICONS: btn_pg_open.setIcon(app_icon("fa5s.external-link-alt", color="#334155"))
         btn_pg_open.clicked.connect(lambda: webbrowser.open("http://localhost:8081"))
         row_pg.addWidget(self.btn_pg_toggle)
         row_pg.addWidget(btn_pg_open)
@@ -364,12 +425,12 @@ class DashboardPage(QWidget):
 
         line_db3 = QFrame()
         line_db3.setFrameShape(QFrame.Shape.HLine)
-        line_db3.setStyleSheet("color: #ecf0f1;")
+        line_db3.setStyleSheet("color: #e2e8f0;")
         card_db.layout.addWidget(line_db3)
 
         row_mp = QHBoxLayout()
         lbl_mp = QLabel("Mailpit (SMTP Inbox)")
-        lbl_mp.setStyleSheet("font-weight: 600; font-size: 14px; color: #2c3e50;")
+        lbl_mp.setStyleSheet("font-weight: 600; font-size: 14px; color: #1e293b;")
         lbl_mp.setFixedWidth(224)
         row_mp.addWidget(lbl_mp)
         self.lbl_mp_status = QLabel("● STOPPED")
@@ -380,12 +441,12 @@ class DashboardPage(QWidget):
         self.btn_mp_toggle = QPushButton(" Start")
         self.btn_mp_toggle.setObjectName("BtnSuccess")
         self.btn_mp_toggle.setFixedWidth(92)
-        if HAS_ICONS: self.btn_mp_toggle.setIcon(qta.icon("fa5s.play", color="white"))
+        if HAS_ICONS: self.btn_mp_toggle.setIcon(app_icon("fa5s.play", color="white"))
         self.btn_mp_toggle.clicked.connect(self.toggle_mailpit)
         btn_mp_open = QPushButton(" Open")
         btn_mp_open.setObjectName("BtnGhost")
         btn_mp_open.setFixedWidth(92)
-        if HAS_ICONS: btn_mp_open.setIcon(qta.icon("fa5s.external-link-alt", color="#34495e"))
+        if HAS_ICONS: btn_mp_open.setIcon(app_icon("fa5s.external-link-alt", color="#334155"))
         btn_mp_open.clicked.connect(lambda: webbrowser.open(f"http://localhost:{MAILPIT_UI_PORT}"))
         row_mp.addWidget(self.btn_mp_toggle)
         row_mp.addWidget(btn_mp_open)
@@ -419,11 +480,11 @@ class DashboardPage(QWidget):
         for sys_name, display_name, icon_name in self.services:
             row = QHBoxLayout()
             lbl_icon = QLabel()
-            if HAS_ICONS: lbl_icon.setPixmap(qta.icon(icon_name, color="#34495e").pixmap(24, 24))
+            if HAS_ICONS: lbl_icon.setPixmap(app_icon(icon_name, color="#334155").pixmap(24, 24))
             row.addWidget(lbl_icon)
             
             lbl_name = QLabel(display_name)
-            lbl_name.setStyleSheet("font-weight: bold; font-size: 14px; color: #2c3e50;")
+            lbl_name.setStyleSheet("font-weight: bold; font-size: 14px; color: #1e293b;")
             lbl_name.setFixedWidth(142)
             row.addWidget(lbl_name)
             row.addSpacing(16)
@@ -439,12 +500,12 @@ class DashboardPage(QWidget):
             
             btn_start = QPushButton(" Start")
             btn_start.setObjectName("BtnSuccess")
-            if HAS_ICONS: btn_start.setIcon(qta.icon("fa5s.play", color="white"))
+            if HAS_ICONS: btn_start.setIcon(app_icon("fa5s.play", color="white"))
             btn_start.clicked.connect(lambda checked, s=sys_name: self.run_cmd(s, "start"))
             
             btn_stop = QPushButton(" Stop")
             btn_stop.setObjectName("BtnDanger")
-            if HAS_ICONS: btn_stop.setIcon(qta.icon("fa5s.stop", color="white"))
+            if HAS_ICONS: btn_stop.setIcon(app_icon("fa5s.stop", color="white"))
             btn_stop.clicked.connect(lambda checked, s=sys_name: self.run_cmd(s, "stop"))
             
             action_stack.addWidget(btn_start)
@@ -453,13 +514,13 @@ class DashboardPage(QWidget):
             btn_restart = QPushButton(" Restart")
             btn_restart.setObjectName("BtnPrimary")
             btn_restart.setFixedWidth(105)
-            if HAS_ICONS: btn_restart.setIcon(qta.icon("fa5s.sync", color="white"))
+            if HAS_ICONS: btn_restart.setIcon(app_icon("fa5s.sync", color="white"))
             btn_restart.clicked.connect(lambda checked, s=sys_name: self.run_cmd(s, "restart"))
 
             btn_install = QPushButton(" Install")
             btn_install.setObjectName("BtnGhost")
             btn_install.setFixedWidth(150)
-            if HAS_ICONS: btn_install.setIcon(qta.icon("fa5s.download", color="#34495e"))
+            if HAS_ICONS: btn_install.setIcon(app_icon("fa5s.download", color="#334155"))
             btn_install.clicked.connect(lambda checked, s=sys_name: self.install_svc(s))
             btn_install.hide()
 
@@ -478,7 +539,7 @@ class DashboardPage(QWidget):
             
             line = QFrame()
             line.setFrameShape(QFrame.Shape.HLine)
-            line.setStyleSheet("color: #ecf0f1;")
+            line.setStyleSheet("color: #e2e8f0;")
             card_svc.layout.addWidget(line)
 
         layout.addWidget(card_svc)
@@ -574,8 +635,8 @@ class DashboardPage(QWidget):
             lbl.style().polish(lbl)
 
             if HAS_ICONS:
-                tint = "#27ae60" if state == "running" else ("#bdc3c7" if state == "missing" else "#95a5a6")
-                widgets['icon'].setPixmap(qta.icon(widgets['icon_name'], color=tint).pixmap(24, 24))
+                tint = "#27ae60" if state == "running" else ("#cbd5e1" if state == "missing" else "#94a3b8")
+                widgets['icon'].setPixmap(app_icon(widgets['icon_name'], color=tint).pixmap(24, 24))
 
     def install_svc(self, svc: str):
         pkg = self.svc_packages.get(svc)
@@ -684,17 +745,17 @@ class DashboardPage(QWidget):
             self.lbl_pma_status.setText("○ NOT INSTALLED")
             self.lbl_pma_status.setObjectName("StatusNA")
             self.btn_pma_setup.setText(" Download")
-            if HAS_ICONS: self.btn_pma_setup.setIcon(qta.icon("fa5s.download", color="#34495e"))
+            if HAS_ICONS: self.btn_pma_setup.setIcon(app_icon("fa5s.download", color="#334155"))
         elif os.path.exists("/etc/apache2/conf-enabled/phpmyadmin.conf") or os.path.exists("/etc/apache2/conf-available/phpmyadmin.conf"):
             self.lbl_pma_status.setText("● CONFIGURED")
             self.lbl_pma_status.setObjectName("StatusRun")
             self.btn_pma_setup.setText(" Setup / Repair")
-            if HAS_ICONS: self.btn_pma_setup.setIcon(qta.icon("fa5s.wrench", color="#34495e"))
+            if HAS_ICONS: self.btn_pma_setup.setIcon(app_icon("fa5s.wrench", color="#334155"))
         else:
             self.lbl_pma_status.setText("○ NOT SET UP")
             self.lbl_pma_status.setObjectName("StatusNA")
             self.btn_pma_setup.setText(" Setup / Repair")
-            if HAS_ICONS: self.btn_pma_setup.setIcon(qta.icon("fa5s.wrench", color="#34495e"))
+            if HAS_ICONS: self.btn_pma_setup.setIcon(app_icon("fa5s.wrench", color="#334155"))
         self.lbl_pma_status.style().unpolish(self.lbl_pma_status)
         self.lbl_pma_status.style().polish(self.lbl_pma_status)
 
@@ -705,19 +766,19 @@ class DashboardPage(QWidget):
             self.lbl_pg_status.setObjectName("StatusRun")
             self.btn_pg_toggle.setText(" Stop")
             self.btn_pg_toggle.setObjectName("BtnDanger")
-            if HAS_ICONS: self.btn_pg_toggle.setIcon(qta.icon("fa5s.stop", color="white"))
+            if HAS_ICONS: self.btn_pg_toggle.setIcon(app_icon("fa5s.stop", color="white"))
         elif not os.path.exists(pg_bin):
             self.lbl_pg_status.setText("○ NOT INSTALLED")
             self.lbl_pg_status.setObjectName("StatusNA")
             self.btn_pg_toggle.setText(" Download")
             self.btn_pg_toggle.setObjectName("BtnPrimary")
-            if HAS_ICONS: self.btn_pg_toggle.setIcon(qta.icon("fa5s.download", color="white"))
+            if HAS_ICONS: self.btn_pg_toggle.setIcon(app_icon("fa5s.download", color="white"))
         else:
             self.lbl_pg_status.setText("● STOPPED")
             self.lbl_pg_status.setObjectName("StatusStop")
             self.btn_pg_toggle.setText(" Start")
             self.btn_pg_toggle.setObjectName("BtnSuccess")
-            if HAS_ICONS: self.btn_pg_toggle.setIcon(qta.icon("fa5s.play", color="white"))
+            if HAS_ICONS: self.btn_pg_toggle.setIcon(app_icon("fa5s.play", color="white"))
         for w in (self.lbl_pg_status, self.btn_pg_toggle):
             w.style().unpolish(w)
             w.style().polish(w)
@@ -729,19 +790,19 @@ class DashboardPage(QWidget):
             self.lbl_mp_status.setObjectName("StatusRun")
             self.btn_mp_toggle.setText(" Stop")
             self.btn_mp_toggle.setObjectName("BtnDanger")
-            if HAS_ICONS: self.btn_mp_toggle.setIcon(qta.icon("fa5s.stop", color="white"))
+            if HAS_ICONS: self.btn_mp_toggle.setIcon(app_icon("fa5s.stop", color="white"))
         elif not os.path.exists(mp_bin):
             self.lbl_mp_status.setText("○ NOT INSTALLED")
             self.lbl_mp_status.setObjectName("StatusNA")
             self.btn_mp_toggle.setText(" Download")
             self.btn_mp_toggle.setObjectName("BtnPrimary")
-            if HAS_ICONS: self.btn_mp_toggle.setIcon(qta.icon("fa5s.download", color="white"))
+            if HAS_ICONS: self.btn_mp_toggle.setIcon(app_icon("fa5s.download", color="white"))
         else:
             self.lbl_mp_status.setText("● STOPPED")
             self.lbl_mp_status.setObjectName("StatusStop")
             self.btn_mp_toggle.setText(" Start")
             self.btn_mp_toggle.setObjectName("BtnSuccess")
-            if HAS_ICONS: self.btn_mp_toggle.setIcon(qta.icon("fa5s.play", color="white"))
+            if HAS_ICONS: self.btn_mp_toggle.setIcon(app_icon("fa5s.play", color="white"))
         for w in (self.lbl_mp_status, self.btn_mp_toggle):
             w.style().unpolish(w)
             w.style().polish(w)
@@ -1069,7 +1130,7 @@ class SniperPage(QWidget):
         card.layout.addWidget(lbl_desc)
         self.btn_scan = QPushButton(" Scan Port Aktif (Membutuhkan akses Root)")
         self.btn_scan.setObjectName("BtnPrimary")
-        if HAS_ICONS: self.btn_scan.setIcon(qta.icon("fa5s.search", color="white"))
+        if HAS_ICONS: self.btn_scan.setIcon(app_icon("fa5s.search", color="white"))
         self.btn_scan.setFixedHeight(40)
         self.btn_scan.clicked.connect(self.scan_ports)
         card.layout.addWidget(self.btn_scan)
@@ -1137,7 +1198,7 @@ class SniperPage(QWidget):
             item_pid.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
             self.table.setItem(row_idx, 3, item_pid)
             btn_kill = QPushButton("KILL")
-            btn_kill.setStyleSheet("background-color: #e74c3c; color: white; font-weight: bold; border-radius: 4px; padding: 6px 12px;")
+            btn_kill.setStyleSheet("background-color: #ef4444; color: white; font-weight: bold; border-radius: 4px; padding: 6px 12px;")
             btn_kill.setCursor(Qt.CursorShape.PointingHandCursor)
             btn_kill.clicked.connect(lambda checked, p=pid, n=app_name: self.kill_process(p, n))
             cell_widget = QWidget()
@@ -1202,11 +1263,11 @@ class PrefsPage(QWidget):
         h_feat = QHBoxLayout()
         btn_ssl = QPushButton(" Enable Local SSL (HTTPS)")
         btn_ssl.setObjectName("BtnSuccess")
-        if HAS_ICONS: btn_ssl.setIcon(qta.icon("fa5s.lock", color="white"))
+        if HAS_ICONS: btn_ssl.setIcon(app_icon("fa5s.lock", color="white"))
         btn_ssl.clicked.connect(self.enable_ssl)
         btn_mail = QPushButton(" Setup Mail Catcher")
         btn_mail.setObjectName("BtnPrimary")
-        if HAS_ICONS: btn_mail.setIcon(qta.icon("fa5s.envelope", color="white"))
+        if HAS_ICONS: btn_mail.setIcon(app_icon("fa5s.envelope", color="white"))
         btn_mail.clicked.connect(self.setup_mailcatcher)
         h_feat.addWidget(btn_ssl)
         h_feat.addWidget(btn_mail)
@@ -1333,7 +1394,7 @@ class PhpPage(QWidget):
         btn_switch = QPushButton("Apply PHP Version")
         btn_switch.setObjectName("BtnPrimary")
         btn_switch.setMinimumHeight(40)
-        if HAS_ICONS: btn_switch.setIcon(qta.icon("fa5s.exchange-alt", color="white"))
+        if HAS_ICONS: btn_switch.setIcon(app_icon("fa5s.exchange-alt", color="white"))
         btn_switch.clicked.connect(self.switch_php)
         h_ver.addWidget(QLabel("Pilih Versi:"))
         h_ver.addWidget(self.combo_php)
@@ -1358,7 +1419,7 @@ class PhpPage(QWidget):
         card_ext.layout.addLayout(grid)
         btn_refresh = QPushButton(" Refresh Extension Status")
         btn_refresh.setObjectName("BtnSuccess") 
-        if HAS_ICONS: btn_refresh.setIcon(qta.icon("fa5s.sync", color="white"))
+        if HAS_ICONS: btn_refresh.setIcon(app_icon("fa5s.sync", color="white"))
         btn_refresh.clicked.connect(self.check_status)
         card_ext.layout.addWidget(btn_refresh)
         layout.addWidget(card_ext)
@@ -1477,7 +1538,7 @@ class EditorPage(QWidget):
         
         btn_load = QPushButton("Load File")
         btn_load.setObjectName("BtnPrimary") 
-        if HAS_ICONS: btn_load.setIcon(qta.icon("fa5s.folder-open", color="white"))
+        if HAS_ICONS: btn_load.setIcon(app_icon("fa5s.folder-open", color="white"))
         btn_load.clicked.connect(self.load_file)
         h.addWidget(self.combo)
         h.addWidget(btn_load)
@@ -1486,7 +1547,7 @@ class EditorPage(QWidget):
         card.layout.addWidget(self.editor)
         btn_save = QPushButton("Save Changes (Root)")
         btn_save.setObjectName("BtnDanger")
-        if HAS_ICONS: btn_save.setIcon(qta.icon("fa5s.save", color="white"))
+        if HAS_ICONS: btn_save.setIcon(app_icon("fa5s.save", color="white"))
         btn_save.clicked.connect(self.save_file)
         card.layout.addWidget(btn_save)
         layout.addWidget(card)
@@ -1535,7 +1596,7 @@ class UtilsPage(QWidget):
         self.inp_user.setMinimumHeight(35)
         btn_fix = QPushButton(" Fix Permissions")
         btn_fix.setObjectName("BtnSuccess")
-        if HAS_ICONS: btn_fix.setIcon(qta.icon("fa5s.check-circle", color="white"))
+        if HAS_ICONS: btn_fix.setIcon(app_icon("fa5s.check-circle", color="white"))
         btn_fix.clicked.connect(self.fix_perms)
         h_perm.addWidget(QLabel("User:"))
         h_perm.addWidget(self.inp_user)
@@ -1560,7 +1621,7 @@ class UtilsPage(QWidget):
         card_vhost.layout.addLayout(grid)
         btn_create = QPushButton("Create Host")
         btn_create.setObjectName("BtnPrimary")
-        if HAS_ICONS: btn_create.setIcon(qta.icon("fa5s.globe", color="white"))
+        if HAS_ICONS: btn_create.setIcon(app_icon("fa5s.globe", color="white"))
         btn_create.clicked.connect(self.create_vhost)
         card_vhost.layout.addWidget(btn_create)
 
@@ -1586,15 +1647,15 @@ class UtilsPage(QWidget):
         h_dbs = QHBoxLayout()
         btn_pg_init = QPushButton(" Init PostgreSQL")
         btn_pg_init.setObjectName("BtnPrimary")
-        if HAS_ICONS: btn_pg_init.setIcon(qta.icon("fa5s.database", color="white"))
+        if HAS_ICONS: btn_pg_init.setIcon(app_icon("fa5s.database", color="white"))
         btn_pg_init.clicked.connect(self.init_postgres)
         btn_pg_login = QPushButton(" PostgreSQL Login Setup")
         btn_pg_login.setObjectName("BtnPrimary")
-        if HAS_ICONS: btn_pg_login.setIcon(qta.icon("fa5s.key", color="white"))
+        if HAS_ICONS: btn_pg_login.setIcon(app_icon("fa5s.key", color="white"))
         btn_pg_login.clicked.connect(self.setup_postgres_login)
         btn_my_pwless = QPushButton(" MariaDB Passwordless")
         btn_my_pwless.setObjectName("BtnPrimary")
-        if HAS_ICONS: btn_my_pwless.setIcon(qta.icon("fa5s.key", color="white"))
+        if HAS_ICONS: btn_my_pwless.setIcon(app_icon("fa5s.key", color="white"))
         btn_my_pwless.clicked.connect(self.setup_mariadb_passwordless)
         h_dbs.addWidget(btn_pg_init)
         h_dbs.addWidget(btn_pg_login)
@@ -1819,10 +1880,10 @@ class ProjectsPage(QWidget):
         super().__init__()
         layout = QVBoxLayout(); layout.setContentsMargins(20, 20, 20, 20); layout.setSpacing(15)
         header = QHBoxLayout()
-        header.addWidget(QLabel("Projects", objectName="PageTitle"))
+        header.addWidget(title_block("Projects", "Manage your virtual hosts"))
         header.addStretch()
         btn_refresh = QPushButton(" Refresh"); btn_refresh.setObjectName("BtnGhost")
-        if HAS_ICONS: btn_refresh.setIcon(qta.icon("fa5s.sync", color="#34495e"))
+        if HAS_ICONS: btn_refresh.setIcon(app_icon("fa5s.sync", color="#334155"))
         btn_refresh.clicked.connect(self.scan)
         header.addWidget(btn_refresh)
         layout.addLayout(header)
@@ -1865,7 +1926,7 @@ class ProjectsPage(QWidget):
     def _action_btn(self, icon, tip, fn):
         b = QPushButton(); b.setFixedSize(32, 30); b.setCursor(Qt.CursorShape.PointingHandCursor); b.setToolTip(tip)
         b.setObjectName("BtnGhost")
-        if HAS_ICONS: b.setIcon(qta.icon(icon, color="#34495e"))
+        if HAS_ICONS: b.setIcon(app_icon(icon, color="#334155"))
         b.clicked.connect(fn)
         return b
 
@@ -1897,10 +1958,10 @@ class DiscoveryPage(QWidget):
         super().__init__()
         layout = QVBoxLayout(); layout.setContentsMargins(20, 20, 20, 20); layout.setSpacing(15)
         header = QHBoxLayout()
-        header.addWidget(QLabel("Discovery", objectName="PageTitle"))
+        header.addWidget(title_block("Discovery", "Detected sites & databases"))
         header.addStretch()
         btn_refresh = QPushButton(" Refresh"); btn_refresh.setObjectName("BtnGhost")
-        if HAS_ICONS: btn_refresh.setIcon(qta.icon("fa5s.sync", color="#34495e"))
+        if HAS_ICONS: btn_refresh.setIcon(app_icon("fa5s.sync", color="#334155"))
         btn_refresh.clicked.connect(self.scan)
         header.addWidget(btn_refresh)
         layout.addLayout(header)
@@ -1954,7 +2015,7 @@ class DiscoveryPage(QWidget):
             self.table.setItem(r, 0, QTableWidgetItem("  " + name))
             self.table.setItem(r, 1, QTableWidgetItem(path))
             st = QTableWidgetItem("● Ada" if exists else "○ Tidak ada")
-            st.setForeground(QColor("#27ae60") if exists else QColor("#95a5a6"))
+            st.setForeground(QColor("#27ae60") if exists else QColor("#94a3b8"))
             self.table.setItem(r, 2, st)
             if exists:
                 b = QPushButton("Open"); b.setObjectName("BtnGhost"); b.setFixedWidth(80)
@@ -1968,12 +2029,12 @@ class ProcessPage(QWidget):
         super().__init__()
         layout = QVBoxLayout(); layout.setContentsMargins(20, 20, 20, 20); layout.setSpacing(15)
         header = QHBoxLayout()
-        header.addWidget(QLabel("Process Monitor", objectName="PageTitle"))
+        header.addWidget(title_block("Process Monitor", "Live processes & resource usage"))
         header.addStretch()
         self.search = QLineEdit(); self.search.setPlaceholderText("Filter nama proses..."); self.search.setFixedWidth(240)
         self.search.textChanged.connect(self.populate)
         btn_refresh = QPushButton(" Refresh"); btn_refresh.setObjectName("BtnGhost")
-        if HAS_ICONS: btn_refresh.setIcon(qta.icon("fa5s.sync", color="#34495e"))
+        if HAS_ICONS: btn_refresh.setIcon(app_icon("fa5s.sync", color="#334155"))
         btn_refresh.clicked.connect(self.refresh)
         header.addWidget(self.search); header.addWidget(btn_refresh)
         layout.addLayout(header)
@@ -2052,10 +2113,10 @@ class LogsPage(QWidget):
         super().__init__()
         layout = QVBoxLayout(); layout.setContentsMargins(20, 20, 20, 20); layout.setSpacing(15)
         header = QHBoxLayout()
-        header.addWidget(QLabel("Logs", objectName="PageTitle"))
+        header.addWidget(title_block("Logs", "Server & application logs"))
         header.addStretch()
         btn_refresh = QPushButton(" Refresh"); btn_refresh.setObjectName("BtnGhost")
-        if HAS_ICONS: btn_refresh.setIcon(qta.icon("fa5s.sync", color="#34495e"))
+        if HAS_ICONS: btn_refresh.setIcon(app_icon("fa5s.sync", color="#334155"))
         btn_refresh.clicked.connect(self.load_current)
         header.addWidget(btn_refresh)
         layout.addLayout(header)
@@ -2104,7 +2165,7 @@ class AboutPage(QWidget):
     def __init__(self):
         super().__init__()
         layout = QVBoxLayout(); layout.setContentsMargins(20, 20, 20, 20); layout.setSpacing(15)
-        layout.addWidget(QLabel("About", objectName="PageTitle"))
+        layout.addWidget(title_block("About", "Loli — local development panel"))
 
         card = Card()
         inner = QVBoxLayout()
@@ -2117,10 +2178,10 @@ class AboutPage(QWidget):
             logo.setPixmap(pm)
             inner.addWidget(logo)
         name = QLabel(APP_NAME); name.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        name.setStyleSheet("font-size: 22px; font-weight: bold; color: #2c3e50;")
+        name.setStyleSheet("font-size: 22px; font-weight: bold; color: #1e293b;")
         inner.addWidget(name)
         ver = QLabel(f"Versi {APP_VERSION}"); ver.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        ver.setStyleSheet("font-size: 14px; color: #3498db; font-weight: bold;")
+        ver.setStyleSheet("font-size: 14px; color: #3b82f6; font-weight: bold;")
         inner.addWidget(ver)
         desc = QLabel("Panel desktop untuk mengelola environment web development lokal di Linux (Debian/Ubuntu).")
         desc.setAlignment(Qt.AlignmentFlag.AlignCenter); desc.setWordWrap(True); desc.setObjectName("Hint")
@@ -2130,7 +2191,7 @@ class AboutPage(QWidget):
         btn_gh = QPushButton(" github.com/s4rt4/loli")
         btn_gh.setObjectName("BtnGhost")
         btn_gh.setCursor(Qt.CursorShape.PointingHandCursor)
-        if HAS_ICONS: btn_gh.setIcon(qta.icon("fa5b.github", color="#2c3e50"))
+        if HAS_ICONS: btn_gh.setIcon(app_icon("fa5b.github", color="#1e293b"))
         btn_gh.clicked.connect(lambda: webbrowser.open("https://github.com/s4rt4/loli"))
         gh_row.addWidget(btn_gh)
         gh_row.addStretch()
@@ -2143,7 +2204,7 @@ class AboutPage(QWidget):
         for k, v in self.sysinfo():
             row = QHBoxLayout()
             lk = QLabel(k); lk.setFixedWidth(140); lk.setStyleSheet("color: #7f8c8d;")
-            lv = QLabel(v); lv.setStyleSheet("font-weight: 600; color: #2c3e50;")
+            lv = QLabel(v); lv.setStyleSheet("font-weight: 600; color: #1e293b;")
             row.addWidget(lk); row.addWidget(lv); row.addStretch()
             info.layout.addLayout(row)
         layout.addWidget(info)
@@ -2199,40 +2260,33 @@ class MainWindow(QMainWindow):
         
         brand = QWidget()
         brand_lay = QVBoxLayout(brand)
-        brand_lay.setContentsMargins(0, 0, 0, 25)
-        brand_lay.setSpacing(2)
-        _logo_pm = load_logo_pixmap(58)
+        brand_lay.setContentsMargins(0, 14, 0, 20)
+        brand_lay.setSpacing(0)
+        _logo_pm = load_logo_pixmap(60, path=TRAY_ICON_PATH)
         if _logo_pm is not None and not _logo_pm.isNull():
             logo_lbl = QLabel()
             logo_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            logo_lbl.setFixedHeight(72)
             logo_lbl.setPixmap(_logo_pm)
             brand_lay.addWidget(logo_lbl)
-        name_lbl = QLabel("Loli")
-        name_lbl.setObjectName("Brand")
-        name_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        sub_lbl = QLabel("LOCALHOST LINUX")
-        sub_lbl.setObjectName("BrandSub")
-        sub_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        brand_lay.addWidget(name_lbl)
-        brand_lay.addWidget(sub_lbl)
         side_lay.addWidget(brand)
         
         self.menu_specs = [
-            ("Dashboard", "fa5s.tachometer-alt", DashboardPage),
-            ("Projects", "fa5s.folder", ProjectsPage),
-            ("Preferences", "fa5s.cogs", PrefsPage),
-            ("PHP Manager", "fa5b.php", PhpPage),
-            ("Port Sniper", "fa5s.crosshairs", SniperPage),
-            ("Processes", "fa5s.microchip", ProcessPage),
-            ("Config Editor", "fa5s.edit", EditorPage),
-            ("Logs", "fa5s.file-alt", LogsPage),
-            ("Discovery", "fa5s.compass", DiscoveryPage),
-            ("Utilities", "fa5s.tools", UtilsPage),
-            ("About", "fa5s.info-circle", AboutPage),
+            ("Dashboard", "fa5s.tachometer-alt", DashboardPage, "dashboard"),
+            ("Projects", "fa5s.folder", ProjectsPage, "project"),
+            ("Preferences", "fa5s.cogs", PrefsPage, "preference"),
+            ("PHP Manager", "fa5b.php", PhpPage, "php"),
+            ("Port Sniper", "fa5s.crosshairs", SniperPage, "port"),
+            ("Processes", "fa5s.microchip", ProcessPage, "process"),
+            ("Config Editor", "fa5s.edit", EditorPage, "config"),
+            ("Logs", "fa5s.file-alt", LogsPage, "log"),
+            ("Discovery", "fa5s.compass", DiscoveryPage, "discover"),
+            ("Utilities", "fa5s.tools", UtilsPage, "utilities"),
+            ("About", "fa5s.info-circle", AboutPage, "about"),
         ]
         self.menu_btns = []
-        for label, icon, _cls in self.menu_specs:
-            b = self.mk_btn(label, icon)
+        for label, icon, _cls, svg in self.menu_specs:
+            b = self.mk_btn(label, icon, svg)
             self.menu_btns.append(b)
             side_lay.addWidget(b)
 
@@ -2248,10 +2302,10 @@ class MainWindow(QMainWindow):
         sys_lay.addWidget(lbl_sys)
 
         self.side_bars = {}
-        for label, color in [("CPU", "#3498db"), ("RAM", "#2ecc71"), ("DISK", "#f1c40f")]:
+        for label, color in [("CPU", "#3b82f6"), ("RAM", "#22c55e"), ("DISK", "#f1c40f")]:
             row = QHBoxLayout()
             lbl = QLabel(label)
-            lbl.setStyleSheet("color: #bdc3c7; font-size: 10px; font-weight: bold;")
+            lbl.setStyleSheet("color: #cbd5e1; font-size: 10px; font-weight: bold;")
             lbl.setFixedWidth(35)
             
             bar = QProgressBar()
@@ -2269,7 +2323,7 @@ class MainWindow(QMainWindow):
         main_lay.addWidget(sidebar)
         
         self.stack = QStackedWidget()
-        for _label, _icon, cls in self.menu_specs:
+        for _label, _icon, cls, _svg in self.menu_specs:
             self.stack.addWidget(cls())
         # Bungkus konten dalam scroll area agar window bisa mengecil -> snap/tiling GNOME jalan
         content_scroll = QScrollArea()
@@ -2317,9 +2371,9 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def _load_color(v):
-        if v < 60: return "#2ecc71"
+        if v < 60: return "#22c55e"
         if v < 85: return "#f1c40f"
-        return "#e74c3c"
+        return "#ef4444"
 
     def update_sidebar_resources(self):
         try:
@@ -2338,13 +2392,20 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logging.warning(f"Failed to update system resources: {e}")
 
-    def mk_btn(self, text: str, icon: str) -> QPushButton:
+    def mk_btn(self, text: str, icon: str, svg: str = None) -> QPushButton:
         btn = QPushButton(text)
         btn.setObjectName("MenuBtn")
         btn.setCheckable(True)
         btn.setAutoExclusive(True)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        if HAS_ICONS: btn.setIcon(qta.icon(icon, color="white" if "php" in icon else "#bdc3c7"))
+        normal = svg_icon(svg, "#cbd5e1") if svg else None
+        if normal is not None:
+            active = svg_icon(svg, "white") or normal
+            btn.setIcon(normal)
+            btn._nav_icons = (normal, active)
+            btn.toggled.connect(lambda checked, b=btn: b.setIcon(b._nav_icons[1] if checked else b._nav_icons[0]))
+        elif HAS_ICONS:
+            btn.setIcon(app_icon(icon, color="white" if "php" in icon else "#cbd5e1"))
         return btn
 
     def setup_tray_icon(self):
@@ -2361,7 +2422,7 @@ class MainWindow(QMainWindow):
         def add(menu, text, icon, fn):
             a = menu.addAction(text)
             if HAS_ICONS:
-                a.setIcon(qta.icon(icon, color="#2c3e50"))
+                a.setIcon(app_icon(icon, color="#1e293b"))
             a.triggered.connect(fn)
             return a
 

@@ -1,5 +1,5 @@
 Name:           loli
-Version:        1.0.0
+Version:        1.0.1
 Release:        1%{?dist}
 Summary:        Loli — Localhost Linux web development panel
 
@@ -33,6 +33,8 @@ Downloadable tools are stored per-user in ~/.local/share/loli.
 install -Dm0644 web_panel.py   %{buildroot}%{_datadir}/loli/web_panel.py
 install -Dm0644 logo.svg       %{buildroot}%{_datadir}/loli/logo.svg
 install -Dm0644 logo-tray.svg  %{buildroot}%{_datadir}/loli/logo-tray.svg
+install -dm0755 %{buildroot}%{_datadir}/loli/icons
+install -m0644 icons/*.svg     %{buildroot}%{_datadir}/loli/icons/
 install -Dm0755 loli.launcher  %{buildroot}%{_bindir}/loli
 install -Dm0644 loli.desktop   %{buildroot}%{_datadir}/applications/loli.desktop
 install -Dm0644 logo.svg       %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/loli.svg
@@ -42,10 +44,18 @@ install -Dm0644 logo.svg       %{buildroot}%{_datadir}/icons/hicolor/scalable/ap
 %{_datadir}/loli/web_panel.py
 %{_datadir}/loli/logo.svg
 %{_datadir}/loli/logo-tray.svg
+%{_datadir}/loli/icons/
 %{_bindir}/loli
 %{_datadir}/applications/loli.desktop
 %{_datadir}/icons/hicolor/scalable/apps/loli.svg
 
 %changelog
+* Wed Jun 11 2026 s4rt4 <surat.sarta@gmail.com> - 1.0.1-1
+- UI refresh: modern slate/Tailwind palette, softer radii, card drop shadows.
+- Page headers gain subtitles; status pills and inputs polished.
+- Custom Lucide SVG icons for the sidebar (recolored, active-state tint) and
+  dashboard start/stop/restart/open actions, with Font Awesome fallback.
+- Sidebar brand simplified to a recolored logo only (text removed).
+
 * Sun Jun 07 2026 s4rt4 <surat.sarta@gmail.com> - 1.0.0-1
 - Initial RPM: full UI, service management, DB tools, multi-page panel.

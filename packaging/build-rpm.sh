@@ -19,6 +19,7 @@ mkdir -p "$TOPDIR"/{BUILD,RPMS,SOURCES,SPECS,SRPMS} "$STAGE"
 cp "$REPO_ROOT/web_panel.py"            "$STAGE/"
 cp "$REPO_ROOT/logo.svg"                "$STAGE/"
 cp "$REPO_ROOT/logo-tray.svg"           "$STAGE/"
+cp -r "$REPO_ROOT/icons"                "$STAGE/"
 cp "$REPO_ROOT/packaging/loli.launcher" "$STAGE/"
 cp "$REPO_ROOT/packaging/loli.desktop"  "$STAGE/"
 
