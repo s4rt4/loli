@@ -1,5 +1,5 @@
 Name:           loli
-Version:        1.0.7
+Version:        1.0.8
 Release:        1%{?dist}
 Summary:        Loli — Localhost Linux web development panel
 
@@ -53,6 +53,20 @@ install -Dm0644 logo-tray.svg  %{buildroot}%{_datadir}/icons/hicolor/scalable/ap
 %{_datadir}/icons/hicolor/scalable/apps/loli.svg
 
 %changelog
+* Sun Jun 14 2026 s4rt4 <surat.sarta@gmail.com> - 1.0.8-1
+- Hardening dari audit menyeluruh tahap kedua:
+- Mail Catcher: log dipindah dari /tmp (chmod 777) ke /var/log/loli-mailcatcher.log
+  milik web-user mode 644, dan dibaca dengan batas ukuran (cegah tamper/OOM).
+- Quit: tunggu worker thread yang masih jalan + hentikan timer Dashboard, agar
+  tidak crash "QThread destroyed while running" / orphan proses root.
+- closeEvent: cek tray secara live; bila host tray mati, minimize (bukan sembunyi
+  ke tray yang tak ada).
+- Editor: simpan hanya bila file termuat cocok dengan pilihan dropdown (cegah
+  menulis isi satu file ke file lain); tak ada lagi Save senyap.
+- Process: kill proses yang sudah mati tak lagi memunculkan error palsu.
+- PHP: versi di-strip; Projects: nama folder di-URL-encode; Preferences: probe
+  grep/php diberi timeout agar GUI tak hang.
+
 * Sun Jun 14 2026 s4rt4 <surat.sarta@gmail.com> - 1.0.7-1
 - pgweb & Mailpit: unduhan kini sadar-arsitektur (x86_64 -> amd64, aarch64 ->
   arm64), sehingga berfungsi di mesin ARM. Arsitektur tak didukung ditolak

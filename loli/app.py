@@ -31,7 +31,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(APP_NAME)
-        if os.path.exists(LOGO_PATH):
+        if os.path.exists(TRAY_ICON_PATH):
             self.setWindowIcon(QIcon(TRAY_ICON_PATH))
         self.resize(1050, 780)
         # minimum kecil supaya bisa di-snap/tiling (setengah layar) & di-resize bebas
@@ -319,15 +319,17 @@ class MainWindow(QMainWindow):
                 self.global_timer.stop()
             event.accept()
             return
-        if getattr(self, 'has_tray', False):
-            # Ada system tray -> sembunyikan ke tray
+        # Re-check the tray live: has_tray is a startup snapshot, and hiding to a
+        # tray whose host has since died would lose the window with no way back.
+        if (getattr(self, 'has_tray', False) and self.tray_icon is not None
+                and QSystemTrayIcon.isSystemTrayAvailable()):
             event.ignore()
             self.hide()
             self.tray_icon.showMessage("Berjalan di Background",
                                        "Loli disembunyikan ke tray. Klik ikon tray untuk membuka.",
                                        QSystemTrayIcon.MessageIcon.Information, 2500)
         else:
-            # Tidak ada tray (GNOME default) -> minimize supaya window tidak hilang
+            # Tidak ada tray (GNOME default / host tray mati) -> minimize supaya window tidak hilang
             event.ignore()
             self.showMinimized()
 
@@ -342,6 +344,18 @@ class MainWindow(QMainWindow):
             except Exception as e: logging.warning(f"Failed to stop mailpit on quit: {e}")
         if hasattr(self, 'global_timer'):
             self.global_timer.stop()
+        # Stop the Dashboard's own refresh timer too, else a queued tick can fire
+        # against half-destroyed widgets during teardown.
+        if hasattr(dash, 'timer'):
+            try: dash.timer.stop()
+            except Exception: pass
+        # Wait for in-flight worker threads (pkexec/root scripts) so Qt doesn't
+        # destroy a running QThread and orphan the spawned root process.
+        for i in range(self.stack.count()):
+            page = self.stack.widget(i)
+            for w in list(getattr(page, '_workers', [])):
+                try: w.wait(3000)
+                except Exception: pass
         QApplication.instance().quit()
 
 def main():
@@ -354,7 +368,7 @@ def main():
     app.setApplicationName("Loli")
     app.setApplicationDisplayName(APP_NAME)
     app.setDesktopFileName("loli")
-    if os.path.exists(LOGO_PATH):
+    if os.path.exists(TRAY_ICON_PATH):
         app.setWindowIcon(QIcon(TRAY_ICON_PATH))
     app.setQuitOnLastWindowClosed(False)
     win = MainWindow()

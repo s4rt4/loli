@@ -28,9 +28,11 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushBut
                              QSizePolicy)
 
 from . import scripts
-from .config import (APP_NAME, APP_VERSION, DATA_DIR, PMA_WEB_DIR, LOGO_PATH,
-                     TRAY_ICON_PATH, ICON_DIR, PGWEB_PORT, MAILPIT_UI_PORT,
-                     MAILPIT_SMTP_PORT)
+from urllib.parse import quote
+
+from .config import (APP_NAME, APP_VERSION, DATA_DIR, PMA_WEB_DIR, MAILCATCHER_LOG,
+                     LOGO_PATH, TRAY_ICON_PATH, ICON_DIR, PGWEB_PORT,
+                     MAILPIT_UI_PORT, MAILPIT_SMTP_PORT)
 from .platform_spec import detect
 from .services import (validate_domain, validate_path, validate_port, validate_username,
                        run_root_script, run_async, get_web_root, port_in_use,
@@ -68,6 +70,18 @@ def _dl_arch():
     if m in ("aarch64", "arm64"):
         return "arm64"
     return None
+
+
+def _sh(cmd, timeout=5):
+    """Run a shell probe with a hard timeout, returning stdout (or "" on any
+    error). subprocess.getoutput has no timeout and would hang the GUI thread if
+    a config path resolves to something that blocks."""
+    try:
+        return subprocess.run(cmd, shell=True, capture_output=True, text=True,
+                              timeout=timeout).stdout
+    except Exception as e:
+        logging.warning(f"shell probe failed ({cmd!r}): {e}")
+        return ""
 
 
 class DashboardPage(QWidget):
@@ -1123,17 +1137,17 @@ class PrefsPage(QWidget):
 
     def load_current_settings(self):
         try:
-            out = subprocess.getoutput(f"grep -m 1 -i 'DocumentRoot' {PLAT.apache_default_vhost}")
+            out = _sh(f"grep -m 1 -i 'DocumentRoot' {PLAT.apache_default_vhost}")
             if "DocumentRoot" in out: self.inp_dir.setText(out.split()[-1].strip().strip('"'))
         except Exception as e:
             logging.warning(f"Failed to load document root: {e}")
 
         try:
-            if "Listen" in (ap := subprocess.getoutput(f"grep -m 1 '^Listen' {PLAT.apache_ports_source}")): self.ports["apache2"].setText(ap.split()[-1].strip())
-            if "listen" in (ng := subprocess.getoutput("grep -m 1 'listen' /etc/nginx/nginx.conf")): self.ports["nginx"].setText(ng.replace('listen','').replace(';','').strip().split()[0])
-            if "port" in (ma := subprocess.getoutput(f"grep -m 1 -h '^port' {PLAT.mariadb_cnf}")): self.ports["mariadb"].setText(ma.split('=')[-1].strip())
-            if "port" in (pg := subprocess.getoutput(f"grep -m 1 -h '^port' {PLAT.pg_conf_glob}")): self.ports["postgresql"].setText(pg.split('=')[-1].strip())
-            if "port" in (mg := subprocess.getoutput("grep -m 1 '^  port:' /etc/mongod.conf")): self.ports["mongod"].setText(mg.split(':')[-1].strip())
+            if "Listen" in (ap := _sh(f"grep -m 1 '^Listen' {PLAT.apache_ports_source}")): self.ports["apache2"].setText(ap.split()[-1].strip())
+            if "listen" in (ng := _sh("grep -m 1 'listen' /etc/nginx/nginx.conf")): self.ports["nginx"].setText(ng.replace('listen','').replace(';','').strip().split()[0])
+            if "port" in (ma := _sh(f"grep -m 1 -h '^port' {PLAT.mariadb_cnf}")): self.ports["mariadb"].setText(ma.split('=')[-1].strip())
+            if "port" in (pg := _sh(f"grep -m 1 -h '^port' {PLAT.pg_conf_glob}")): self.ports["postgresql"].setText(pg.split('=')[-1].strip())
+            if "port" in (mg := _sh("grep -m 1 '^  port:' /etc/mongod.conf")): self.ports["mongod"].setText(mg.split(':')[-1].strip())
         except Exception as e:
             logging.warning(f"Failed to load port settings: {e}")
 
@@ -1153,7 +1167,7 @@ class PrefsPage(QWidget):
                 QMessageBox.critical(self, "Error", f"Port {svc} tidak valid! Harus 1-65535")
                 return
         
-        php_ver = subprocess.getoutput("php -r \"echo PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;\" 2>/dev/null")
+        php_ver = _sh("php -r \"echo PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;\" 2>/dev/null").strip()
         if not re.match(r"^\d+\.\d+$", php_ver): php_ver = "8.4"
         ports = {k: self.ports[k].text() for k in ("nginx", "apache2", "mariadb", "postgresql", "mongod")}
         s = scripts.prefs_apply(PLAT, ndir, ports, php_ver)
@@ -1178,9 +1192,11 @@ class PrefsPage(QWidget):
 
     def read_mails(self):
         try:
-            with open("/tmp/php-mail.log", "r") as f: 
-                self.mail_viewer.setText(f.read().strip() or "Belum ada email yang ditangkap.")
-        except FileNotFoundError: 
+            with open(MAILCATCHER_LOG, "r") as f:
+                # Cap the read so a huge log can't OOM/freeze the UI.
+                data = f.read(2_000_000)
+                self.mail_viewer.setText(data.strip() or "Belum ada email yang ditangkap.")
+        except FileNotFoundError:
             self.mail_viewer.setText("Mail catcher log belum terbentuk. Silakan setup terlebih dahulu.")
         except Exception as e:
             self.mail_viewer.setText(f"Error membaca log: {str(e)}")
@@ -1267,13 +1283,11 @@ class PhpPage(QWidget):
 
     def check_status(self):
         try:
-            ver = subprocess.check_output(["php", "-r", "echo PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;"], text=True, timeout=5)
+            ver = subprocess.check_output(["php", "-r", "echo PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;"], text=True, timeout=5).strip()
+            self.curr_ver = ver
             if PLAT.id == "debian":
-                ver = ver.strip()
-                self.curr_ver = ver
                 active = os.listdir(f"/etc/php/{ver}/cli/conf.d/")
             else:
-                self.curr_ver = ver
                 active = os.listdir("/etc/php.d/")
             for ext, chk in self.checks.items():
                 chk.setChecked(any(ext in f for f in active))
@@ -1366,21 +1380,28 @@ class EditorPage(QWidget):
             QMessageBox.warning(self, "Not Found", "File tidak ditemukan di sistem Anda.")
 
     def save_file(self):
-        if hasattr(self, 'curr_path'):
-            content = self.editor.toPlainText()
-            try:
-                with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
-                    temp_file.write(content)
-                    temp_path = temp_file.name
-                
-                subprocess.run(["pkexec", "cp", temp_path, self.curr_path], check=True, timeout=10)
+        # Save the file that's actually loaded — and only if it still matches the
+        # combo selection, so switching the dropdown without reloading can't write
+        # one file's contents over another.
+        selected = self.files.get(self.combo.currentText())
+        if not hasattr(self, 'curr_path') or self.curr_path != selected:
+            QMessageBox.warning(self, "Load dulu",
+                "Klik 'Load' untuk file yang dipilih sebelum menyimpan.")
+            return
+        content = self.editor.toPlainText()
+        try:
+            with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
+                temp_file.write(content)
+                temp_path = temp_file.name
+
+            subprocess.run(["pkexec", "cp", temp_path, self.curr_path], check=True, timeout=10)
+            os.remove(temp_path)
+            QMessageBox.information(self, "Saved", "File berhasil disimpan!")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Gagal menyimpan: {str(e)}")
+            logging.error(f"Failed to save file: {e}")
+            if 'temp_path' in locals() and os.path.exists(temp_path):
                 os.remove(temp_path)
-                QMessageBox.information(self, "Saved", "File berhasil disimpan!")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Gagal menyimpan: {str(e)}")
-                logging.error(f"Failed to save file: {e}")
-                if 'temp_path' in locals() and os.path.exists(temp_path):
-                    os.remove(temp_path)
 
 class UtilsPage(QWidget):
     def __init__(self):
@@ -1709,7 +1730,7 @@ class ProjectsPage(QWidget):
             self.table.setItem(r, 0, QTableWidgetItem("  " + name))
             self.table.setItem(r, 1, QTableWidgetItem(self.detect_type(path)))
             cell = QWidget(); cl = QHBoxLayout(cell); cl.setContentsMargins(6, 4, 6, 4); cl.setSpacing(6)
-            cl.addWidget(self._action_btn("fa5s.globe", "Buka di browser", lambda _, n=name: webbrowser.open(f"http://localhost/{n}/")))
+            cl.addWidget(self._action_btn("fa5s.globe", "Buka di browser", lambda _, n=name: webbrowser.open(f"http://localhost/{quote(n)}/")))
             cl.addWidget(self._action_btn("fa5s.folder-open", "Buka folder", lambda _, p=path: open_path(p)))
             cl.addWidget(self._action_btn("fa5s.terminal", "Buka terminal", lambda _, p=path: open_terminal(p)))
             cl.addWidget(self._action_btn("fa5s.code", "Buka editor", lambda _, p=path: open_editor(p)))
@@ -1846,6 +1867,9 @@ class ProcessPage(QWidget):
         try:
             psutil.Process(pid).terminate()
             QTimer.singleShot(600, self.refresh)
+        except psutil.NoSuchProcess:
+            # Already gone (stale snapshot) — just refresh, not an error.
+            self.refresh()
         except psutil.AccessDenied:
             def work():
                 return subprocess.run(["pkexec", "kill", "-9", str(pid)], timeout=30).returncode

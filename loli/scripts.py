@@ -8,6 +8,7 @@ tests/test_scripts.py) so unifying the two files changes no behaviour.
 
 import shlex
 
+from .config import MAILCATCHER_LOG
 from .services import validate_port
 
 
@@ -250,11 +251,12 @@ def php_switch(plat, target: str) -> str:
 
 def php_mailcatcher(plat) -> str:
     """Install a fake sendmail that logs mail, and point php.ini at it."""
+    log = MAILCATCHER_LOG
     return (
-        "echo '#!/bin/bash\ncat >> /tmp/php-mail.log\necho -e \"\\n---END OF MAIL---\\n\" "
-        ">> /tmp/php-mail.log' > /usr/local/bin/local-mailcatcher\n"
+        f"echo '#!/bin/bash\ncat >> {log}\necho -e \"\\n---END OF MAIL---\\n\" "
+        f">> {log}' > /usr/local/bin/local-mailcatcher\n"
         "chmod +x /usr/local/bin/local-mailcatcher\n"
-        "touch /tmp/php-mail.log && chmod 777 /tmp/php-mail.log\n"
+        f"touch {log} && chown {plat.web_user}:{plat.web_user} {log} && chmod 644 {log}\n"
         f"for ini in {plat.php_ini_glob}; do\n"
         "if [ -f \"$ini\" ]; then\n"
         "if grep -q \"sendmail_path\" \"$ini\"; then\n"

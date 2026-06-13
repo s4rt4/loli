@@ -32,12 +32,17 @@ except OSError:
 # the web root, where the default httpd_sys_content_t label applies.
 PMA_WEB_DIR = "/var/www/loli/phpmyadmin"
 
+# Captured outgoing mail. NOT in world-writable /tmp: the setup creates it owned
+# by the web user, mode 644, so a local user can't pre-plant a giant file or
+# tamper with what the panel displays.
+MAILCATCHER_LOG = "/var/log/loli-mailcatcher.log"
+
 PGWEB_PORT = 8081
 MAILPIT_UI_PORT = 8025
 MAILPIT_SMTP_PORT = 1025
 
 __all__ = [
     "APP_NAME", "APP_VERSION", "PKG_DIR", "ASSET_DIR", "LOGO_PATH",
-    "TRAY_ICON_PATH", "ICON_DIR", "DATA_DIR", "PMA_WEB_DIR", "PGWEB_PORT",
+    "TRAY_ICON_PATH", "ICON_DIR", "DATA_DIR", "PMA_WEB_DIR", "MAILCATCHER_LOG", "PGWEB_PORT",
     "MAILPIT_UI_PORT", "MAILPIT_SMTP_PORT",
 ]

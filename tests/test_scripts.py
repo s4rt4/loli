@@ -324,12 +324,14 @@ def test_php_switch():
 
 
 def test_php_mailcatcher():
-    common = (
-        "echo '#!/bin/bash\ncat >> /tmp/php-mail.log\necho -e \"\\n---END OF MAIL---\\n\" "
-        ">> /tmp/php-mail.log' > /usr/local/bin/local-mailcatcher\n"
+    log = "/var/log/loli-mailcatcher.log"
+    common_fedora = (
+        f"echo '#!/bin/bash\ncat >> {log}\necho -e \"\\n---END OF MAIL---\\n\" "
+        f">> {log}' > /usr/local/bin/local-mailcatcher\n"
         "chmod +x /usr/local/bin/local-mailcatcher\n"
-        "touch /tmp/php-mail.log && chmod 777 /tmp/php-mail.log\n"
+        f"touch {log} && chown apache:apache {log} && chmod 644 {log}\n"
     )
+    common_debian = common_fedora.replace("chown apache:apache", "chown www-data:www-data")
     loop_tail = (
         "if [ -f \"$ini\" ]; then\n"
         "if grep -q \"sendmail_path\" \"$ini\"; then\n"
@@ -341,12 +343,12 @@ def test_php_mailcatcher():
         "done\n"
     )
     assert S.php_mailcatcher(FEDORA) == (
-        common + "for ini in /etc/php.ini; do\n" + loop_tail
+        common_fedora + "for ini in /etc/php.ini; do\n" + loop_tail
         + "systemctl restart httpd || true\n"
         + "systemctl restart php-fpm || true"
     )
     assert S.php_mailcatcher(DEBIAN) == (
-        common + "for ini in /etc/php/*/apache2/php.ini /etc/php/*/fpm/php.ini; do\n" + loop_tail
+        common_debian + "for ini in /etc/php/*/apache2/php.ini /etc/php/*/fpm/php.ini; do\n" + loop_tail
         + "systemctl restart apache2 || true\n"
         + "systemctl restart php*-fpm || true"
     )
