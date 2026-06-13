@@ -54,13 +54,13 @@ class MainWindow(QMainWindow):
         
         brand = QWidget()
         brand_lay = QVBoxLayout(brand)
-        brand_lay.setContentsMargins(0, 14, 0, 20)
+        brand_lay.setContentsMargins(0, 8, 0, 12)
         brand_lay.setSpacing(0)
-        _logo_pm = load_logo_pixmap(60, path=TRAY_ICON_PATH)
+        _logo_pm = load_logo_pixmap(64, path=TRAY_ICON_PATH)
         if _logo_pm is not None and not _logo_pm.isNull():
             logo_lbl = QLabel()
             logo_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            logo_lbl.setFixedHeight(72)
+            logo_lbl.setFixedHeight(76)
             logo_lbl.setPixmap(_logo_pm)
             brand_lay.addWidget(logo_lbl)
         side_lay.addWidget(brand)
@@ -100,13 +100,16 @@ class MainWindow(QMainWindow):
             row = QHBoxLayout()
             lbl = QLabel(label)
             lbl.setStyleSheet("color: #cbd5e1; font-size: 10px; font-weight: bold;")
-            lbl.setFixedWidth(35)
-            
+            lbl.setFixedWidth(40)
+
             bar = QProgressBar()
             bar.setObjectName("SideBar")
+            # Tinggi tetap supaya bar tak kolaps saat sidebar sempit (mis. font Debian
+            # lebih tinggi -> ruang vertikal berkurang).
+            bar.setFixedHeight(16)
             bar.setStyleSheet(f"QProgressBar::chunk {{ background-color: {color}; border-radius: 4px; }}")
             bar.setFormat("%p%")
-            
+
             row.addWidget(lbl)
             row.addWidget(bar)
             sys_lay.addLayout(row)

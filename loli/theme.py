@@ -9,7 +9,7 @@ QMainWindow { background-color: #f8fafc; }
 QWidget { color: #1e293b; }
 QWidget#Sidebar { background-color: #1e293b; color: white; }
 QWidget#Sidebar QLabel { color: white; }
-QPushButton#MenuBtn { text-align: left; padding: 12px 20px; background-color: transparent; border: none; color: #94a3b8; font-size: 14px; border-radius: 0px; }
+QPushButton#MenuBtn { text-align: left; padding: 9px 20px; background-color: transparent; border: none; color: #94a3b8; font-size: 14px; border-radius: 0px; }
 QPushButton#MenuBtn:hover { background-color: #334155; color: white; }
 QPushButton#MenuBtn:checked { background-color: #3b82f6; color: white; font-weight: bold; border-left: 4px solid white; }
 QFrame#Card { background-color: white; border-radius: 12px; border: 1px solid #e2e8f0; }
@@ -43,7 +43,7 @@ QFrame#Row { background-color: transparent; border-radius: 8px; }
 QFrame#Row:hover { background-color: #f1f5f9; }
 QPushButton#BtnQuitGhost { background-color: white; border: 1px solid #fecaca; color: #ef4444; }
 QPushButton#BtnQuitGhost:hover { background-color: #fef2f2; border: 1px solid #ef4444; color: #dc2626; }
-QProgressBar#SideBar { background-color: #0f172a; border: none; border-radius: 4px; color: white; text-align: center; font-size: 10px; font-weight: bold; }
+QProgressBar#SideBar { background-color: #0f172a; border: none; border-radius: 4px; color: white; text-align: center; font-size: 10px; font-weight: bold; min-height: 14px; }
 QTableWidget { background-color: white; color: #1e293b; border: 1px solid #e2e8f0; border-radius: 8px; gridline-color: #f1f5f9; }
 QHeaderView::section { background-color: #f1f5f9; color: #334155; font-weight: bold; padding: 6px; border: none; border-bottom: 1px solid #e2e8f0; }
 """
