@@ -189,7 +189,9 @@ class DashboardPage(QWidget):
             lbl_status.setObjectName("StatusNA")
             lbl_status.setFixedHeight(24)
             row.addWidget(lbl_status, 0, Qt.AlignmentFlag.AlignVCenter)
-            row.addStretch()
+            # stretch factor 1 -> spacer menyerap SEMUA ruang ekstra saat sidebar
+            # collapse; tanpa ini action_stack (Preferred) ikut meregang.
+            row.addStretch(1)
 
             action_stack = QStackedWidget()
             action_stack.setMinimumWidth(95)

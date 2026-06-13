@@ -46,16 +46,37 @@ class MainWindow(QMainWindow):
         main_lay.setSpacing(0)
         main_wid.setLayout(main_lay)
         
+        self.SIDEBAR_W_EXPANDED = 230
+        self.SIDEBAR_W_COLLAPSED = 64
+        self.sidebar_collapsed = False
+
         sidebar = QWidget()
+        self.sidebar = sidebar
         sidebar.setObjectName("Sidebar")
-        sidebar.setFixedWidth(230)
+        sidebar.setFixedWidth(self.SIDEBAR_W_EXPANDED)
         side_lay = QVBoxLayout()
-        side_lay.setContentsMargins(0,20,0,20)
-        
+        side_lay.setContentsMargins(0,12,0,20)
+        side_lay.setSpacing(0)
+
+        # Baris toggle collapse/expand di paling atas sidebar.
+        top_row = QWidget()
+        tr_lay = QHBoxLayout(top_row)
+        tr_lay.setContentsMargins(8, 0, 8, 0)
+        tr_lay.setSpacing(0)
+        self.toggle_btn = QPushButton()
+        self.toggle_btn.setObjectName("SideToggle")
+        self.toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.toggle_btn.setToolTip("Collapse sidebar")
+        self.toggle_btn.clicked.connect(self.toggle_sidebar)
+        tr_lay.addStretch()
+        tr_lay.addWidget(self.toggle_btn)
+        side_lay.addWidget(top_row)
+
         brand = QWidget()
         brand_lay = QVBoxLayout(brand)
-        brand_lay.setContentsMargins(0, 8, 0, 12)
+        brand_lay.setContentsMargins(0, 4, 0, 12)
         brand_lay.setSpacing(0)
+        self.logo_lbl = None
         _logo_pm = load_logo_pixmap(64, path=TRAY_ICON_PATH)
         if _logo_pm is not None and not _logo_pm.isNull():
             logo_lbl = QLabel()
@@ -63,8 +84,22 @@ class MainWindow(QMainWindow):
             logo_lbl.setFixedHeight(76)
             logo_lbl.setPixmap(_logo_pm)
             brand_lay.addWidget(logo_lbl)
+            self.logo_lbl = logo_lbl
         side_lay.addWidget(brand)
-        
+
+        # Menu di-scroll: brand (atas) & system resources (bawah) selalu menempel dan
+        # tampil penuh. Saat window pendek (tiling 1/2 layar, min-height) menu yang
+        # menggulir, bukan resource bar yang tergencet sampai saling tumpang tindih.
+        menu_scroll = QScrollArea()
+        menu_scroll.setObjectName("MenuScroll")
+        menu_scroll.setWidgetResizable(True)
+        menu_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        menu_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        menu_host = QWidget()
+        menu_lay = QVBoxLayout(menu_host)
+        menu_lay.setContentsMargins(0, 0, 0, 0)
+        menu_lay.setSpacing(0)
+
         self.menu_specs = [
             ("Dashboard", "fa5s.tachometer-alt", DashboardPage, "dashboard"),
             ("Projects", "fa5s.folder", ProjectsPage, "project"),
@@ -82,15 +117,18 @@ class MainWindow(QMainWindow):
         for label, icon, _cls, svg in self.menu_specs:
             b = self.mk_btn(label, icon, svg)
             self.menu_btns.append(b)
-            side_lay.addWidget(b)
+            menu_lay.addWidget(b)
 
-        side_lay.addStretch()
+        menu_lay.addStretch()
+        menu_scroll.setWidget(menu_host)
+        side_lay.addWidget(menu_scroll, 1)
 
         sys_frame = QFrame()
+        self.sys_frame = sys_frame
         sys_lay = QVBoxLayout(sys_frame)
         sys_lay.setContentsMargins(15, 10, 15, 10)
         sys_lay.setSpacing(8)
-        
+
         lbl_sys = QLabel("SYSTEM RESOURCES")
         lbl_sys.setStyleSheet("color: #7f8c8d; font-size: 11px; font-weight: bold; margin-bottom: 5px;")
         sys_lay.addWidget(lbl_sys)
@@ -132,7 +170,8 @@ class MainWindow(QMainWindow):
         for idx, b in enumerate(self.menu_btns):
             b.clicked.connect(lambda checked, i=idx: self.stack.setCurrentIndex(i))
         self.menu_btns[0].setChecked(True)
-        
+        self._set_toggle_icon()
+
         self.setup_tray_icon()
         
         self.global_timer = QTimer()
@@ -191,6 +230,7 @@ class MainWindow(QMainWindow):
 
     def mk_btn(self, text: str, icon: str, svg: str = None) -> QPushButton:
         btn = QPushButton(text)
+        btn._full_text = text
         btn.setObjectName("MenuBtn")
         btn.setCheckable(True)
         btn.setAutoExclusive(True)
@@ -204,6 +244,45 @@ class MainWindow(QMainWindow):
         elif HAS_ICONS:
             btn.setIcon(app_icon(icon, color="white" if "php" in icon else "#cbd5e1"))
         return btn
+
+    def toggle_sidebar(self):
+        self.sidebar_collapsed = not self.sidebar_collapsed
+        self.apply_sidebar_state()
+
+    def apply_sidebar_state(self):
+        collapsed = self.sidebar_collapsed
+        self.sidebar.setFixedWidth(
+            self.SIDEBAR_W_COLLAPSED if collapsed else self.SIDEBAR_W_EXPANDED)
+
+        for b in self.menu_btns:
+            b.setText("" if collapsed else b._full_text)
+            b.setToolTip(b._full_text if collapsed else "")
+            b.setProperty("collapsed", collapsed)
+            b.style().unpolish(b)
+            b.style().polish(b)
+
+        # SYSTEM RESOURCES tak muat di lebar 64px -> sembunyikan saat collapse.
+        if getattr(self, "sys_frame", None) is not None:
+            self.sys_frame.setVisible(not collapsed)
+
+        # Logo mengecil agar muat di sidebar sempit.
+        if getattr(self, "logo_lbl", None) is not None:
+            pm = load_logo_pixmap(40 if collapsed else 64, path=TRAY_ICON_PATH)
+            if pm is not None and not pm.isNull():
+                self.logo_lbl.setPixmap(pm)
+            self.logo_lbl.setFixedHeight(48 if collapsed else 76)
+
+        self._set_toggle_icon()
+
+    def _set_toggle_icon(self):
+        collapsed = self.sidebar_collapsed
+        self.toggle_btn.setToolTip("Expand sidebar" if collapsed else "Collapse sidebar")
+        if HAS_ICONS:
+            name = "fa5s.angle-double-right" if collapsed else "fa5s.angle-double-left"
+            self.toggle_btn.setIcon(app_icon(name, color="#94a3b8"))
+            self.toggle_btn.setText("")
+        else:
+            self.toggle_btn.setText("»" if collapsed else "«")
 
     def setup_tray_icon(self):
         # GNOME modern sering tanpa system tray -> deteksi agar window tidak "hilang"

@@ -9,7 +9,16 @@ QMainWindow { background-color: #f8fafc; }
 QWidget { color: #1e293b; }
 QWidget#Sidebar { background-color: #1e293b; color: white; }
 QWidget#Sidebar QLabel { color: white; }
+QScrollArea#MenuScroll, QScrollArea#MenuScroll > QWidget > QWidget { background-color: #1e293b; border: none; }
+QScrollArea#MenuScroll QScrollBar:vertical { background: transparent; width: 6px; margin: 0; }
+QScrollArea#MenuScroll QScrollBar::handle:vertical { background: #475569; border-radius: 3px; min-height: 24px; }
+QScrollArea#MenuScroll QScrollBar::handle:vertical:hover { background: #64748b; }
+QScrollArea#MenuScroll QScrollBar::add-line:vertical, QScrollArea#MenuScroll QScrollBar::sub-line:vertical { height: 0; }
+QScrollArea#MenuScroll QScrollBar::add-page:vertical, QScrollArea#MenuScroll QScrollBar::sub-page:vertical { background: transparent; }
+QPushButton#SideToggle { background-color: transparent; border: none; color: #94a3b8; padding: 4px 8px; border-radius: 6px; font-size: 16px; }
+QPushButton#SideToggle:hover { background-color: #334155; color: white; }
 QPushButton#MenuBtn { text-align: left; padding: 9px 20px; background-color: transparent; border: none; color: #94a3b8; font-size: 14px; border-radius: 0px; }
+QPushButton#MenuBtn[collapsed="true"] { text-align: center; padding: 9px 0px; }
 QPushButton#MenuBtn:hover { background-color: #334155; color: white; }
 QPushButton#MenuBtn:checked { background-color: #3b82f6; color: white; font-weight: bold; border-left: 4px solid white; }
 QFrame#Card { background-color: white; border-radius: 12px; border: 1px solid #e2e8f0; }
