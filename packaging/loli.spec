@@ -1,5 +1,5 @@
 Name:           loli
-Version:        1.0.4
+Version:        1.0.5
 Release:        1%{?dist}
 Summary:        Loli — Localhost Linux web development panel
 
@@ -53,6 +53,15 @@ install -Dm0644 logo-tray.svg  %{buildroot}%{_datadir}/icons/hicolor/scalable/ap
 %{_datadir}/icons/hicolor/scalable/apps/loli.svg
 
 %changelog
+* Sat Jun 13 2026 s4rt4 <surat.sarta@gmail.com> - 1.0.5-1
+- pgweb/mailpit: perbaiki "Operation not permitted" (EPERM) saat start. Binary
+  yang sudah executable namun dimiliki user lain (mis. root pada checkout di
+  /var/www) gagal di-chmod oleh user; kini chmod dilewati bila bit exec sudah
+  ada dan kegagalan chmod tidak lagi membatalkan start.
+- phpMyAdmin: kini juga disajikan di bawah nginx. Setup menulis snippet
+  /etc/nginx/default.d/phpmyadmin.conf (location + php-fpm) sehingga /phpmyadmin
+  bekerja baik saat Apache maupun nginx yang aktif. Sebelumnya nginx membalas 404.
+
 * Sat Jun 13 2026 s4rt4 <surat.sarta@gmail.com> - 1.0.4-1
 - phpMyAdmin: perbaiki "403 Forbidden" pada instalasi RPM. Karena DATA_DIR jatuh
   ke ~/.local/share/loli, phpMyAdmin terunduh ke dalam $HOME (mode 0700) yang tak

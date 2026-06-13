@@ -40,6 +40,22 @@ from .widgets import (Card, FlowLayout, title_block, svg_icon, app_icon,
 PLAT = detect()
 
 
+def _ensure_executable(path):
+    """Make ``path`` runnable, tolerating files we don't own.
+
+    The bundled pgweb/mailpit binaries may be owned by another user (e.g. root
+    when they sit in a repo checkout under /var/www). chmod by a non-owner
+    raises EPERM even when the file is already executable, so only chmod when
+    the exec bit is actually missing, and never let a failed chmod abort start.
+    """
+    if os.access(path, os.X_OK):
+        return
+    try:
+        os.chmod(path, 0o755)
+    except OSError as e:
+        logging.warning(f"Could not chmod {path}: {e}")
+
+
 class DashboardPage(QWidget):
     def __init__(self):
         super().__init__()
@@ -622,7 +638,7 @@ class DashboardPage(QWidget):
             self.download_mailpit()
             return
         try:
-            os.chmod(binary, 0o755)
+            _ensure_executable(binary)
             self._mailpit_log = tempfile.NamedTemporaryFile(mode='w+', suffix='.log', prefix='mailpit-', delete=False)
             self.mailpit_proc = subprocess.Popen(
                 [binary, "--listen", f"127.0.0.1:{MAILPIT_UI_PORT}", "--smtp", f"127.0.0.1:{MAILPIT_SMTP_PORT}"],
@@ -826,7 +842,7 @@ class DashboardPage(QWidget):
             QMessageBox.critical(self, "Error", f"Binary pgweb tidak ditemukan di:\n{binary}")
             return
         try:
-            os.chmod(binary, 0o755)
+            _ensure_executable(binary)
             # stderr ke file (bukan PIPE) supaya buffer tidak penuh & error bisa dibaca jika gagal
             self._pgweb_log = tempfile.NamedTemporaryFile(mode='w+', suffix='.log', prefix='pgweb-', delete=False)
             self.pgweb_proc = subprocess.Popen(

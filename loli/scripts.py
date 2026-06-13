@@ -144,6 +144,28 @@ def phpmyadmin_setup(plat, staging: str, served: str, served_q: str, tmp_q: str)
         s += "command -v restorecon >/dev/null 2>&1 && restorecon -R \"$PMA\"\n"
         s += ("command -v setsebool >/dev/null 2>&1 && setsebool -P "
               "httpd_can_network_connect_db on 2>/dev/null || true\n")
+    # Also serve /phpmyadmin under nginx so it works whichever web server is up
+    # (Apache and nginx share port 80 mutually-exclusively in this panel). The
+    # whole block is runtime-guarded, so it is a no-op when nginx is absent.
+    s += (
+        "if [ -d /etc/nginx/default.d ]; then\n"
+        "cat << 'NGINXEOF' > /etc/nginx/default.d/phpmyadmin.conf\n"
+        "location = /phpmyadmin { return 301 /phpmyadmin/; }\n"
+        "location /phpmyadmin/ {\n"
+        f"    alias {served}/;\n"
+        "    index index.php;\n"
+        "    location ~ ^/phpmyadmin/(.+\\.php)$ {\n"
+        f"        alias {served}/$1;\n"
+        "        fastcgi_pass unix:/run/php-fpm/www.sock;\n"
+        "        include fastcgi_params;\n"
+        "        fastcgi_param SCRIPT_FILENAME $request_filename;\n"
+        "    }\n"
+        "}\n"
+        "NGINXEOF\n"
+        "command -v nginx >/dev/null 2>&1 && nginx -t >/dev/null 2>&1 && "
+        "systemctl reload nginx 2>/dev/null || true\n"
+        "fi\n"
+    )
     s += plat.restart_web()
     return s
 

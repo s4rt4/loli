@@ -157,6 +157,25 @@ def test_phpmyadmin_setup():
         "</Directory>\n"
         "EOF\n"
     )
+    nginx_block = (
+        "if [ -d /etc/nginx/default.d ]; then\n"
+        "cat << 'NGINXEOF' > /etc/nginx/default.d/phpmyadmin.conf\n"
+        "location = /phpmyadmin { return 301 /phpmyadmin/; }\n"
+        "location /phpmyadmin/ {\n"
+        f"    alias {served}/;\n"
+        "    index index.php;\n"
+        "    location ~ ^/phpmyadmin/(.+\\.php)$ {\n"
+        f"        alias {served}/$1;\n"
+        "        fastcgi_pass unix:/run/php-fpm/www.sock;\n"
+        "        include fastcgi_params;\n"
+        "        fastcgi_param SCRIPT_FILENAME $request_filename;\n"
+        "    }\n"
+        "}\n"
+        "NGINXEOF\n"
+        "command -v nginx >/dev/null 2>&1 && nginx -t >/dev/null 2>&1 && "
+        "systemctl reload nginx 2>/dev/null || true\n"
+        "fi\n"
+    )
     assert S.phpmyadmin_setup(FEDORA, staging, served, served_q, tmp_q) == (
         head
         + "cat << 'EOF' > /etc/httpd/conf.d/phpMyAdmin.conf\n"
@@ -170,6 +189,7 @@ def test_phpmyadmin_setup():
         + "command -v restorecon >/dev/null 2>&1 && restorecon -R \"$PMA\"\n"
         + "command -v setsebool >/dev/null 2>&1 && setsebool -P httpd_can_network_connect_db "
           "on 2>/dev/null || true\n"
+        + nginx_block
         + "systemctl restart httpd\n"
     )
     assert S.phpmyadmin_setup(DEBIAN, staging, served, served_q, tmp_q) == (
@@ -179,6 +199,7 @@ def test_phpmyadmin_setup():
         + "a2enconf phpmyadmin || true\n"
         + "chown -R www-data:www-data \"$PMA\"\n"
         + "chmod 1777 \"$PMA/tmp\"\n"
+        + nginx_block
         + "systemctl restart apache2\n"
     )
 
