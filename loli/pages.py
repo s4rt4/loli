@@ -27,8 +27,9 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushBut
                              QSizePolicy)
 
 from . import scripts
-from .config import (APP_NAME, APP_VERSION, DATA_DIR, LOGO_PATH, TRAY_ICON_PATH,
-                     ICON_DIR, PGWEB_PORT, MAILPIT_UI_PORT, MAILPIT_SMTP_PORT)
+from .config import (APP_NAME, APP_VERSION, DATA_DIR, PMA_WEB_DIR, LOGO_PATH,
+                     TRAY_ICON_PATH, ICON_DIR, PGWEB_PORT, MAILPIT_UI_PORT,
+                     MAILPIT_SMTP_PORT)
 from .platform_spec import detect
 from .services import (validate_domain, validate_path, validate_port, validate_username,
                        run_root_script, run_async, get_web_root, port_in_use,
@@ -501,9 +502,16 @@ class DashboardPage(QWidget):
         except Exception:
             return False
 
+    @staticmethod
+    def _pma_present():
+        # Downloaded if it exists either in the unprivileged staging dir or in
+        # the web-served location it gets relocated to during setup.
+        return (os.path.exists(os.path.join(PMA_WEB_DIR, "index.php"))
+                or os.path.exists(os.path.join(DATA_DIR, "phpmyadmin", "index.php")))
+
     def update_db_status(self):
         # phpMyAdmin: 3 state -> belum diunduh / belum setup / configured
-        pma_present = os.path.exists(os.path.join(DATA_DIR, "phpmyadmin", "index.php"))
+        pma_present = self._pma_present()
         if not pma_present:
             self.lbl_pma_status.setText("○ NOT INSTALLED")
             self.lbl_pma_status.setObjectName("StatusNA")
@@ -663,7 +671,7 @@ class DashboardPage(QWidget):
 
     def on_pma_action(self):
         # Tombol dinamis: Download bila belum ada, selain itu Setup/Repair
-        if not os.path.exists(os.path.join(DATA_DIR, "phpmyadmin", "index.php")):
+        if not self._pma_present():
             self.download_phpmyadmin()
         else:
             self.setup_phpmyadmin()
@@ -705,7 +713,12 @@ class DashboardPage(QWidget):
 
     def setup_phpmyadmin(self):
         import secrets
-        pma = os.path.join(DATA_DIR, "phpmyadmin")
+        staging = os.path.join(DATA_DIR, "phpmyadmin")
+        # ``served`` is where Apache reads it from; the root script relocates the
+        # staging copy here on a fresh install. config.inc.php must point at the
+        # served location since that is where phpMyAdmin ultimately runs.
+        served = PMA_WEB_DIR
+        pma = served if os.path.exists(os.path.join(served, "index.php")) else staging
         if not os.path.exists(os.path.join(pma, "index.php")):
             QMessageBox.critical(self, "Error", f"phpMyAdmin tidak ditemukan di:\n{pma}")
             return
@@ -721,7 +734,7 @@ class DashboardPage(QWidget):
             "$cfg['Servers'][$i]['host'] = '127.0.0.1';\n"
             "$cfg['Servers'][$i]['compress'] = false;\n"
             "$cfg['Servers'][$i]['AllowNoPassword'] = true;\n"
-            f"$cfg['TempDir'] = '{pma}/tmp';\n"
+            f"$cfg['TempDir'] = '{served}/tmp';\n"
         )
 
         tmp_path = None
@@ -734,9 +747,9 @@ class DashboardPage(QWidget):
             QMessageBox.critical(self, "Error", "Gagal menyiapkan config phpMyAdmin.")
             return
 
-        pma_q = shlex.quote(pma)
+        served_q = shlex.quote(served)
         tmp_q = shlex.quote(tmp_path)
-        script = scripts.phpmyadmin_setup(PLAT, pma, pma_q, tmp_q)
+        script = scripts.phpmyadmin_setup(PLAT, staging, served, served_q, tmp_q)
 
         def work():
             return run_root_script(script)

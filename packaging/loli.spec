@@ -1,5 +1,5 @@
 Name:           loli
-Version:        1.0.3
+Version:        1.0.4
 Release:        1%{?dist}
 Summary:        Loli — Localhost Linux web development panel
 
@@ -53,6 +53,14 @@ install -Dm0644 logo-tray.svg  %{buildroot}%{_datadir}/icons/hicolor/scalable/ap
 %{_datadir}/icons/hicolor/scalable/apps/loli.svg
 
 %changelog
+* Sat Jun 13 2026 s4rt4 <surat.sarta@gmail.com> - 1.0.4-1
+- phpMyAdmin: perbaiki "403 Forbidden" pada instalasi RPM. Karena DATA_DIR jatuh
+  ke ~/.local/share/loli, phpMyAdmin terunduh ke dalam $HOME (mode 0700) yang tak
+  bisa di-traverse Apache. Setup kini memindahkannya ke /var/www/loli/phpmyadmin
+  (label SELinux httpd_sys_content_t otomatis benar) lalu mengarahkan Alias ke sana.
+- Deteksi status phpMyAdmin kini mengenali lokasi staging maupun lokasi tersaji,
+  sehingga tidak lagi salah menampilkan "NOT INSTALLED" setelah relokasi.
+
 * Sat Jun 13 2026 s4rt4 <surat.sarta@gmail.com> - 1.0.3-1
 - Sidebar: tombol collapse/expand (230px <-> 64px). Saat collapse hanya ikon yang
   tampil; teks menu jadi tooltip, logo & panel System Resources disembunyikan.

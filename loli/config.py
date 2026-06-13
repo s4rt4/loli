@@ -26,12 +26,18 @@ try:
 except OSError:
     DATA_DIR = ASSET_DIR
 
+# phpMyAdmin must be served by Apache, which cannot traverse a user's $HOME
+# (mode 0700). When DATA_DIR falls back to ~/.local/share/loli the download
+# lands there as staging; the privileged setup step relocates it here, under
+# the web root, where the default httpd_sys_content_t label applies.
+PMA_WEB_DIR = "/var/www/loli/phpmyadmin"
+
 PGWEB_PORT = 8081
 MAILPIT_UI_PORT = 8025
 MAILPIT_SMTP_PORT = 1025
 
 __all__ = [
     "APP_NAME", "APP_VERSION", "PKG_DIR", "ASSET_DIR", "LOGO_PATH",
-    "TRAY_ICON_PATH", "ICON_DIR", "DATA_DIR", "PGWEB_PORT",
+    "TRAY_ICON_PATH", "ICON_DIR", "DATA_DIR", "PMA_WEB_DIR", "PGWEB_PORT",
     "MAILPIT_UI_PORT", "MAILPIT_SMTP_PORT",
 ]

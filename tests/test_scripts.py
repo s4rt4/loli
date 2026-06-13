@@ -135,9 +135,15 @@ def test_mongo_install():
 
 
 def test_phpmyadmin_setup():
-    pma, pma_q, tmp_q = "/data/phpmyadmin", "/data/phpmyadmin", "/tmp/abc.php"
+    staging, served = "/stage/phpmyadmin", "/data/phpmyadmin"
+    served_q, tmp_q = "/data/phpmyadmin", "/tmp/abc.php"
+    pma = served
     head = (
-        f"PMA={pma_q}\n"
+        f"PMA={served_q}\n"
+        f"STAGING={staging}\n"
+        "mkdir -p \"$(dirname \"$PMA\")\"\n"
+        "if [ -d \"$STAGING\" ] && [ ! -e \"$PMA/index.php\" ]; then "
+        "rm -rf \"$PMA\"; mv \"$STAGING\" \"$PMA\"; fi\n"
         f"cp {tmp_q} \"$PMA/config.inc.php\"\n"
         "mkdir -p \"$PMA/tmp\"\n"
     )
@@ -151,7 +157,7 @@ def test_phpmyadmin_setup():
         "</Directory>\n"
         "EOF\n"
     )
-    assert S.phpmyadmin_setup(FEDORA, pma, pma_q, tmp_q) == (
+    assert S.phpmyadmin_setup(FEDORA, staging, served, served_q, tmp_q) == (
         head
         + "cat << 'EOF' > /etc/httpd/conf.d/phpMyAdmin.conf\n"
         + body
@@ -166,7 +172,7 @@ def test_phpmyadmin_setup():
           "on 2>/dev/null || true\n"
         + "systemctl restart httpd\n"
     )
-    assert S.phpmyadmin_setup(DEBIAN, pma, pma_q, tmp_q) == (
+    assert S.phpmyadmin_setup(DEBIAN, staging, served, served_q, tmp_q) == (
         head
         + "cat << 'EOF' > /etc/apache2/conf-available/phpmyadmin.conf\n"
         + body

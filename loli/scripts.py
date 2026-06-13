@@ -105,18 +105,27 @@ def mongo_install(plat) -> str:
     )
 
 
-def phpmyadmin_setup(plat, pma: str, pma_q: str, tmp_q: str) -> str:
-    """Drop the phpMyAdmin config + apache alias and fix ownership/labels.
+def phpmyadmin_setup(plat, staging: str, served: str, served_q: str, tmp_q: str) -> str:
+    """Relocate the downloaded copy under the web root, then drop the
+    phpMyAdmin config + apache alias and fix ownership/labels.
 
-    ``pma`` is the raw install dir, ``pma_q``/``tmp_q`` are shlex.quote'd.
+    ``staging`` is the unprivileged download dir (may sit in $HOME, which Apache
+    cannot traverse); ``served`` is the final web-served dir. ``served_q``/
+    ``tmp_q`` are shlex.quote'd. On a fresh install the staging copy is moved to
+    ``served``; on a repair (``served`` already populated) the move is skipped.
     """
+    staging_q = shlex.quote(staging)
     s = (
-        f"PMA={pma_q}\n"
+        f"PMA={served_q}\n"
+        f"STAGING={staging_q}\n"
+        "mkdir -p \"$(dirname \"$PMA\")\"\n"
+        "if [ -d \"$STAGING\" ] && [ ! -e \"$PMA/index.php\" ]; then "
+        "rm -rf \"$PMA\"; mv \"$STAGING\" \"$PMA\"; fi\n"
         f"cp {tmp_q} \"$PMA/config.inc.php\"\n"
         "mkdir -p \"$PMA/tmp\"\n"
         f"cat << 'EOF' > {plat.phpmyadmin_conf}\n"
-        f"Alias /phpmyadmin {pma}\n"
-        f"<Directory {pma}>\n"
+        f"Alias /phpmyadmin {served}\n"
+        f"<Directory {served}>\n"
         "    Options FollowSymLinks\n"
         "    DirectoryIndex index.php\n"
         "    AllowOverride All\n"
@@ -129,9 +138,9 @@ def phpmyadmin_setup(plat, pma: str, pma_q: str, tmp_q: str) -> str:
     s += "chmod 1777 \"$PMA/tmp\"\n"
     if plat.has_selinux:
         s += (f"command -v semanage >/dev/null 2>&1 && semanage fcontext -a -t "
-              f"httpd_sys_content_t '{pma}(/.*)?' 2>/dev/null\n")
+              f"httpd_sys_content_t '{served}(/.*)?' 2>/dev/null\n")
         s += (f"command -v semanage >/dev/null 2>&1 && semanage fcontext -a -t "
-              f"httpd_sys_rw_content_t '{pma}/tmp(/.*)?' 2>/dev/null\n")
+              f"httpd_sys_rw_content_t '{served}/tmp(/.*)?' 2>/dev/null\n")
         s += "command -v restorecon >/dev/null 2>&1 && restorecon -R \"$PMA\"\n"
         s += ("command -v setsebool >/dev/null 2>&1 && setsebool -P "
               "httpd_can_network_connect_db on 2>/dev/null || true\n")
