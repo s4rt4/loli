@@ -1,5 +1,5 @@
 Name:           loli
-Version:        1.0.5
+Version:        1.0.6
 Release:        1%{?dist}
 Summary:        Loli — Localhost Linux web development panel
 
@@ -53,6 +53,20 @@ install -Dm0644 logo-tray.svg  %{buildroot}%{_datadir}/icons/hicolor/scalable/ap
 %{_datadir}/icons/hicolor/scalable/apps/loli.svg
 
 %changelog
+* Sun Jun 14 2026 s4rt4 <surat.sarta@gmail.com> - 1.0.6-1
+- Hardening dari audit bug menyeluruh:
+- vhost: DocumentRoot/<Directory> kini memakai path yang di-escape; validate_path
+  menolak karakter kontrol (mencegah injeksi direktif ke config root).
+- Preferences: ubah port PostgreSQL kini dijaga [ -f ] per-file (tidak lagi
+  "sukses" palsu saat postgresql.conf belum ada).
+- run_root_script menulis script sementara dengan mode 0700 (bukan 0755) karena
+  bisa memuat password DB.
+- phpMyAdmin: download ulang kini benar-benar mengganti salinan lama (upgrade)
+  dan tidak meninggalkan folder arsip menumpuk; arsip tak lengkap ditolak.
+- pgweb/mailpit: cegah spawn ganda saat port lambat bind, perpanjang cek start
+  ke 2.5s, bersihkan log /tmp, pkill lebih presisi, dan beri tahu bila port
+  dipegang proses milik user lain.
+
 * Sat Jun 13 2026 s4rt4 <surat.sarta@gmail.com> - 1.0.5-1
 - pgweb/mailpit: perbaiki "Operation not permitted" (EPERM) saat start. Binary
   yang sudah executable namun dimiliki user lain (mis. root pada checkout di

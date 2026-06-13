@@ -44,7 +44,7 @@ def _ref_fedora_prefs(ndir, ports, php_ver):
             s += f"printf '[mysqld]\\nport = {p_ma}\\n' > /etc/my.cnf.d/custom-panel.cnf\nsystemctl restart mariadb || true\n"
     if p_pg := ports["postgresql"]:
         if validate_port(p_pg):
-            s += f"sed -i -E 's/^#?port = [0-9]+/port = {p_pg}/g' /var/lib/pgsql/data/postgresql.conf\nsystemctl restart postgresql || true\n"
+            s += f"for pgc in /var/lib/pgsql/data/postgresql.conf; do [ -f \"$pgc\" ] && sed -i -E 's/^#?port = [0-9]+/port = {p_pg}/g' \"$pgc\"; done\nsystemctl restart postgresql || true\n"
     if p_mg := ports["mongod"]:
         if validate_port(p_mg):
             s += f"sed -i -E 's/^  port: [0-9]+/  port: {p_mg}/g' /etc/mongod.conf\nsystemctl restart mongod || true\n"
@@ -77,7 +77,7 @@ def _ref_debian_prefs(ndir, ports, php_ver):
             s += f"sed -i -E 's/^port\\s*=.*/port = {p_ma}/g' /etc/mysql/mariadb.conf.d/50-server.cnf\nsystemctl restart mariadb || true\n"
     if p_pg := ports["postgresql"]:
         if validate_port(p_pg):
-            s += f"sed -i -E 's/^#?port = [0-9]+/port = {p_pg}/g' /etc/postgresql/*/main/postgresql.conf\nsystemctl restart postgresql || true\n"
+            s += f"for pgc in /etc/postgresql/*/main/postgresql.conf; do [ -f \"$pgc\" ] && sed -i -E 's/^#?port = [0-9]+/port = {p_pg}/g' \"$pgc\"; done\nsystemctl restart postgresql || true\n"
     if p_mg := ports["mongod"]:
         if validate_port(p_mg):
             s += f"sed -i -E 's/^  port: [0-9]+/  port: {p_mg}/g' /etc/mongod.conf\nsystemctl restart mongod || true\n"
@@ -142,7 +142,7 @@ def test_phpmyadmin_setup():
         f"PMA={served_q}\n"
         f"STAGING={staging}\n"
         "mkdir -p \"$(dirname \"$PMA\")\"\n"
-        "if [ -d \"$STAGING\" ] && [ ! -e \"$PMA/index.php\" ]; then "
+        "if [ -d \"$STAGING\" ]; then "
         "rm -rf \"$PMA\"; mv \"$STAGING\" \"$PMA\"; fi\n"
         f"cp {tmp_q} \"$PMA/config.inc.php\"\n"
         "mkdir -p \"$PMA/tmp\"\n"

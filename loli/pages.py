@@ -57,6 +57,19 @@ def _ensure_executable(path):
 
 
 class DashboardPage(QWidget):
+    def _cleanup_log(self, attr):
+        """Delete and forget a tool's stderr temp log so /tmp doesn't accumulate
+        one orphaned file per pgweb/mailpit start."""
+        log = getattr(self, attr, None)
+        if log is None:
+            return
+        try:
+            if os.path.exists(log.name):
+                os.remove(log.name)
+        except OSError:
+            pass
+        setattr(self, attr, None)
+
     def __init__(self):
         super().__init__()
         self.pgweb_proc = None
@@ -633,12 +646,17 @@ class DashboardPage(QWidget):
             webbrowser.open(f"http://localhost:{MAILPIT_UI_PORT}")
             self.update_db_status()
             return
+        # A child we already spawned may still be binding the port; don't spawn
+        # a second one and orphan the first.
+        if self.mailpit_proc is not None and self.mailpit_proc.poll() is None:
+            return
         binary = os.path.join(DATA_DIR, "mailpit")
         if not os.path.exists(binary):
             self.download_mailpit()
             return
         try:
             _ensure_executable(binary)
+            self._cleanup_log("_mailpit_log")
             self._mailpit_log = tempfile.NamedTemporaryFile(mode='w+', suffix='.log', prefix='mailpit-', delete=False)
             self.mailpit_proc = subprocess.Popen(
                 [binary, "--listen", f"127.0.0.1:{MAILPIT_UI_PORT}", "--smtp", f"127.0.0.1:{MAILPIT_SMTP_PORT}"],
@@ -647,7 +665,7 @@ class DashboardPage(QWidget):
             logging.error(f"Failed to start mailpit: {e}")
             QMessageBox.critical(self, "Error", f"Gagal menjalankan Mailpit: {str(e)}")
             return
-        QTimer.singleShot(1000, self._check_mailpit_started)
+        QTimer.singleShot(2500, self._check_mailpit_started)
         self.update_db_status()
 
     def _check_mailpit_started(self):
@@ -663,6 +681,7 @@ class DashboardPage(QWidget):
             except Exception:
                 pass
             self.mailpit_proc = None
+            self._cleanup_log("_mailpit_log")
             msg = (err.strip().splitlines() or ["proses berhenti tanpa pesan"])[-1]
             QMessageBox.critical(self, "Mailpit gagal start", f"Mailpit berhenti:\n\n{msg}")
         elif port_in_use(MAILPIT_UI_PORT):
@@ -678,11 +697,15 @@ class DashboardPage(QWidget):
                 try: self.mailpit_proc.kill()
                 except Exception: pass
         self.mailpit_proc = None
+        self._cleanup_log("_mailpit_log")
         if port_in_use(MAILPIT_UI_PORT):
             try:
-                subprocess.run(["pkill", "-f", f"{DATA_DIR}/mailpit"], timeout=5)
+                subprocess.run(["pkill", "-f", os.path.join(DATA_DIR, "mailpit")], timeout=5)
             except Exception as e:
                 logging.warning(f"Failed to pkill mailpit: {e}")
+            if port_in_use(MAILPIT_UI_PORT):
+                QMessageBox.warning(self, "Mailpit", "Port Mailpit masih dipakai proses "
+                    "lain yang tidak bisa dihentikan dari sini (mungkin milik user/root lain).")
         self.update_db_status()
 
     def on_pma_action(self):
@@ -710,8 +733,13 @@ class DashboardPage(QWidget):
                 z.extractall(DATA_DIR)
             extracted = os.path.join(DATA_DIR, f"phpMyAdmin-{ver}-all-languages")
             target = os.path.join(DATA_DIR, "phpmyadmin")
-            if os.path.isdir(extracted) and not os.path.exists(target):
-                shutil.move(extracted, target)
+            if not os.path.isfile(os.path.join(extracted, "index.php")):
+                raise RuntimeError("arsip phpMyAdmin tidak lengkap (index.php tak ditemukan)")
+            # Replace any previous staging copy so a re-download upgrades cleanly
+            # instead of silently keeping the old tree and leaking the new one.
+            if os.path.exists(target):
+                shutil.rmtree(target, ignore_errors=True)
+            shutil.move(extracted, target)
             try: os.remove(zpath)
             except Exception: pass
             return ver
@@ -837,6 +865,11 @@ class DashboardPage(QWidget):
             self.update_db_status()
             return
 
+        # A child we already spawned may still be binding the port; don't spawn
+        # a second one and orphan the first.
+        if self.pgweb_proc is not None and self.pgweb_proc.poll() is None:
+            return
+
         binary = os.path.join(DATA_DIR, "pgweb_linux_amd64")
         if not os.path.exists(binary):
             QMessageBox.critical(self, "Error", f"Binary pgweb tidak ditemukan di:\n{binary}")
@@ -844,6 +877,7 @@ class DashboardPage(QWidget):
         try:
             _ensure_executable(binary)
             # stderr ke file (bukan PIPE) supaya buffer tidak penuh & error bisa dibaca jika gagal
+            self._cleanup_log("_pgweb_log")
             self._pgweb_log = tempfile.NamedTemporaryFile(mode='w+', suffix='.log', prefix='pgweb-', delete=False)
             self.pgweb_proc = subprocess.Popen(
                 [binary, "--bind", "127.0.0.1", "--listen", str(PGWEB_PORT), "--sessions"],
@@ -853,7 +887,7 @@ class DashboardPage(QWidget):
             QMessageBox.critical(self, "Error", f"Gagal menjalankan pgweb: {str(e)}")
             return
         # Cek setelah jeda: kalau proses sudah mati, tampilkan errornya
-        QTimer.singleShot(1000, self._check_pgweb_started)
+        QTimer.singleShot(2500, self._check_pgweb_started)
         self.update_db_status()
 
     def _check_pgweb_started(self):
@@ -869,6 +903,7 @@ class DashboardPage(QWidget):
             except Exception:
                 pass
             self.pgweb_proc = None
+            self._cleanup_log("_pgweb_log")
             msg = (err.strip().splitlines() or ["proses berhenti tanpa pesan"])[-1]
             QMessageBox.critical(self, "pgweb gagal start", f"pgweb berhenti:\n\n{msg}")
         elif self._pgweb_running():
@@ -884,12 +919,16 @@ class DashboardPage(QWidget):
                 try: self.pgweb_proc.kill()
                 except Exception: pass
         self.pgweb_proc = None
+        self._cleanup_log("_pgweb_log")
         # Bersihkan juga instance orphan yang masih memegang port
         if self._pgweb_running():
             try:
-                subprocess.run(["pkill", "-f", "pgweb_linux_amd64"], timeout=5)
+                subprocess.run(["pkill", "-f", os.path.join(DATA_DIR, "pgweb_linux_amd64")], timeout=5)
             except Exception as e:
                 logging.warning(f"Failed to pkill pgweb: {e}")
+            if self._pgweb_running():
+                QMessageBox.warning(self, "pgweb", "Port pgweb masih dipakai proses "
+                    "lain yang tidak bisa dihentikan dari sini (mungkin milik user/root lain).")
         self.update_db_status()
 
 class SniperPage(QWidget):
@@ -1507,8 +1546,8 @@ class UtilsPage(QWidget):
             f"# loli-vhost {dom}\n"
             "<VirtualHost *:80>\n"
             f"    ServerName {dom}\n"
-            f"    DocumentRoot {path}\n"
-            f"    <Directory {path}>\n"
+            f"    DocumentRoot {path_escaped}\n"
+            f"    <Directory {path_escaped}>\n"
             "        Options Indexes FollowSymLinks\n"
             "        AllowOverride All\n"
             "        Require all granted\n"

@@ -25,6 +25,11 @@ def validate_domain(domain: str) -> bool:
 def validate_path(path: str) -> bool:
     if not path:
         return False
+    # Reject control characters (newlines, etc.): they are never valid in a
+    # docroot and would otherwise let a path inject extra lines into the
+    # root-written Apache/nginx config files.
+    if any(ord(c) < 32 for c in path):
+        return False
     return os.path.isabs(path) and '..' not in path
 
 
@@ -51,7 +56,10 @@ def run_root_script(script_content: str) -> bool:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
             f.write("#!/bin/bash\n" + script_content)
             temp_path = f.name
-        os.chmod(temp_path, 0o755)
+        # 0o700, not 0o755: the script may embed DB passwords (pg_login,
+        # mariadb_passwordless). pkexec runs it as root, which can read/exec an
+        # owner-only file, so there is no need to expose it to other local users.
+        os.chmod(temp_path, 0o700)
         subprocess.run(["pkexec", temp_path], check=True, capture_output=True, text=True)
         return True
     except subprocess.CalledProcessError as e:

@@ -5,5 +5,5 @@ The previous design hardcoded the version in several places; everything now
 imports APP_VERSION from here.
 """
 
-APP_VERSION = "1.0.5"
+APP_VERSION = "1.0.6"
 APP_NAME = "Loli — Localhost Linux"

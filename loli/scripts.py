@@ -63,7 +63,11 @@ def prefs_apply(plat, ndir: str, ports: dict, php_ver: str) -> str:
 
     p_pg = ports.get("postgresql", "")
     if p_pg and validate_port(p_pg):
-        s += (f"sed -i -E 's/^#?port = [0-9]+/port = {p_pg}/g' {plat.pg_conf_glob}\n"
+        # Loop the glob and guard with [ -f ]: on Fedora the conf only exists
+        # after the cluster is initdb'd, so an unguarded sed on a missing file
+        # used to fail silently and report a bogus success.
+        s += (f"for pgc in {plat.pg_conf_glob}; do [ -f \"$pgc\" ] && "
+              f"sed -i -E 's/^#?port = [0-9]+/port = {p_pg}/g' \"$pgc\"; done\n"
               "systemctl restart postgresql || true\n")
 
     p_mg = ports.get("mongod", "")
@@ -111,15 +115,16 @@ def phpmyadmin_setup(plat, staging: str, served: str, served_q: str, tmp_q: str)
 
     ``staging`` is the unprivileged download dir (may sit in $HOME, which Apache
     cannot traverse); ``served`` is the final web-served dir. ``served_q``/
-    ``tmp_q`` are shlex.quote'd. On a fresh install the staging copy is moved to
-    ``served``; on a repair (``served`` already populated) the move is skipped.
+    ``tmp_q`` are shlex.quote'd. Whenever a freshly-downloaded staging copy is
+    present it replaces ``served`` (so re-downloading upgrades in place); a plain
+    repair has no staging dir and operates on the existing ``served`` copy.
     """
     staging_q = shlex.quote(staging)
     s = (
         f"PMA={served_q}\n"
         f"STAGING={staging_q}\n"
         "mkdir -p \"$(dirname \"$PMA\")\"\n"
-        "if [ -d \"$STAGING\" ] && [ ! -e \"$PMA/index.php\" ]; then "
+        "if [ -d \"$STAGING\" ]; then "
         "rm -rf \"$PMA\"; mv \"$STAGING\" \"$PMA\"; fi\n"
         f"cp {tmp_q} \"$PMA/config.inc.php\"\n"
         "mkdir -p \"$PMA/tmp\"\n"
