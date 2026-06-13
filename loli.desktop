@@ -2,11 +2,10 @@
 Type=Application
 Name=Loli
 GenericName=Localhost Linux Panel
-Comment=Panel manajemen environment web development lokal (Fedora)
-Exec=python3 /var/www/html/web-panel/web_panel.py
-Path=/var/www/html/web-panel
+Comment=Panel manajemen environment web development lokal
+Exec=loli
 Icon=loli
 Terminal=false
-Categories=Development;
+Categories=Development;System;
 StartupWMClass=loli
 StartupNotify=true

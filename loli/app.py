@@ -4,16 +4,17 @@ import logging
 import os
 import shutil
 import sys
+import webbrowser
 
 import psutil
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QAction, QIcon
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QLabel, QPushButton, QFrame, QMessageBox,
                              QStackedWidget, QProgressBar, QScrollArea, QSystemTrayIcon,
                              QMenu)
 
-from .config import APP_NAME, LOGO_PATH, TRAY_ICON_PATH
+from .config import APP_NAME, LOGO_PATH, TRAY_ICON_PATH, PGWEB_PORT
 from .platform_spec import detect
 from .services import (run_root_script, run_async, get_web_root, open_path,
                        open_terminal, polkit_agent_running)

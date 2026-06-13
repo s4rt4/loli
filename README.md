@@ -10,10 +10,12 @@
 
 ---
 
-Loli adalah panel kontrol GUI (PyQt6) bergaya Laragon/XAMPP untuk Linux: kontrol service, kelola database, lihat proses, dan utilitas dev lokal dalam satu jendela. Tersedia dua varian dengan fitur & tampilan identik:
+Loli adalah panel kontrol GUI (PyQt6) bergaya Laragon/XAMPP untuk Linux: kontrol service, kelola database, lihat proses, dan utilitas dev lokal dalam satu jendela. Satu entry point (`web_panel.py`) melayani kedua keluarga distro; perbedaannya dipilih otomatis saat runtime lewat `loli/platform_spec.py`:
 
-- **`web_panel.py`** — untuk **Fedora** (httpd, php-fpm tunggal, `dnf`, SELinux ditangani otomatis).
-- **`web_panel_deb.py`** — untuk **Debian/Ubuntu** (apache2, multi-versi PHP via `a2enmod`/`update-alternatives`, `apt`).
+- **Fedora / RHEL** — httpd, php-fpm tunggal, `dnf`, SELinux ditangani otomatis, valkey.
+- **Debian / Ubuntu** — apache2, multi-versi PHP via `a2enmod`/`update-alternatives`, `apt`, redis-server.
+
+Deteksi memakai `/etc/os-release`; paksa salah satu dengan env `LOLI_PLATFORM=fedora` atau `LOLI_PLATFORM=debian`.
 
 ## Fitur
 
@@ -44,8 +46,7 @@ Membangun ulang dari sumber: `sudo dnf install -y rpm-build` lalu `bash packagin
 
 ```bash
 python3 -m pip install --user PyQt6 psutil qtawesome
-python3 web_panel.py        # Fedora
-python3 web_panel_deb.py    # Debian/Ubuntu
+python3 web_panel.py        # distro terdeteksi otomatis (Fedora / Debian / Ubuntu)
 ```
 
 Aset pihak ketiga (tidak disertakan di repo) diunduh otomatis lewat tombol *Download* di aplikasi: `pgweb`, `phpmyadmin/`, `mailpit`. Saat Loli terinstal sistem (read-only), unduhan disimpan per-user di `~/.local/share/loli`.
