@@ -8,6 +8,7 @@ web_panel_deb.py page classes; the ~10% that differed now lives behind PLAT.
 import glob
 import logging
 import os
+import platform
 import re
 import shlex
 import shutil
@@ -54,6 +55,19 @@ def _ensure_executable(path):
         os.chmod(path, 0o755)
     except OSError as e:
         logging.warning(f"Could not chmod {path}: {e}")
+
+
+def _dl_arch():
+    """Map the host CPU to the release-asset arch slug used by pgweb & mailpit
+    (both ship linux amd64/arm64 builds). Returns None on unsupported arches so
+    the caller can fail with a clear message instead of fetching an amd64 binary
+    that won't run."""
+    m = platform.machine().lower()
+    if m in ("x86_64", "amd64"):
+        return "amd64"
+    if m in ("aarch64", "arm64"):
+        return "arm64"
+    return None
 
 
 class DashboardPage(QWidget):
@@ -619,10 +633,15 @@ class DashboardPage(QWidget):
     def download_mailpit(self):
         self.btn_mp_toggle.setEnabled(False)
         self.btn_mp_toggle.setText(" Downloading...")
-        url = "https://github.com/axllent/mailpit/releases/latest/download/mailpit-linux-amd64.tar.gz"
         dest = DATA_DIR
 
         def work():
+            arch = _dl_arch()
+            if arch is None:
+                raise RuntimeError(f"arsitektur {platform.machine()} tidak didukung "
+                                   "untuk Mailpit (hanya x86_64/arm64)")
+            url = ("https://github.com/axllent/mailpit/releases/latest/download/"
+                   f"mailpit-linux-{arch}.tar.gz")
             tar = os.path.join(dest, "_mailpit.tar.gz")
             subprocess.run(["curl", "-fL", "-o", tar, url], check=True, timeout=180)
             subprocess.run(["tar", "-xzf", tar, "-C", dest, "mailpit"], check=True, timeout=60)
@@ -831,10 +850,15 @@ class DashboardPage(QWidget):
     def download_pgweb(self):
         self.btn_pg_toggle.setEnabled(False)
         self.btn_pg_toggle.setText(" Downloading...")
-        url = "https://github.com/sosedoff/pgweb/releases/latest/download/pgweb_linux_amd64.zip"
 
         def work():
             import zipfile
+            arch = _dl_arch()
+            if arch is None:
+                raise RuntimeError(f"arsitektur {platform.machine()} tidak didukung "
+                                   "untuk pgweb (hanya x86_64/arm64)")
+            url = ("https://github.com/sosedoff/pgweb/releases/latest/download/"
+                   f"pgweb_linux_{arch}.zip")
             zpath = os.path.join(DATA_DIR, "_pgweb.zip")
             subprocess.run(["curl", "-fL", "-o", zpath, url], check=True, timeout=240)
             with zipfile.ZipFile(zpath) as z:

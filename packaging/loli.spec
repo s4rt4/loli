@@ -1,5 +1,5 @@
 Name:           loli
-Version:        1.0.6
+Version:        1.0.7
 Release:        1%{?dist}
 Summary:        Loli — Localhost Linux web development panel
 
@@ -53,6 +53,11 @@ install -Dm0644 logo-tray.svg  %{buildroot}%{_datadir}/icons/hicolor/scalable/ap
 %{_datadir}/icons/hicolor/scalable/apps/loli.svg
 
 %changelog
+* Sun Jun 14 2026 s4rt4 <surat.sarta@gmail.com> - 1.0.7-1
+- pgweb & Mailpit: unduhan kini sadar-arsitektur (x86_64 -> amd64, aarch64 ->
+  arm64), sehingga berfungsi di mesin ARM. Arsitektur tak didukung ditolak
+  dengan pesan jelas alih-alih mengunduh binary amd64 yang tak bisa jalan.
+
 * Sun Jun 14 2026 s4rt4 <surat.sarta@gmail.com> - 1.0.6-1
 - Hardening dari audit bug menyeluruh:
 - vhost: DocumentRoot/<Directory> kini memakai path yang di-escape; validate_path
