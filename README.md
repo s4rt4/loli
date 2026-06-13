@@ -38,9 +38,9 @@ Detection reads `/etc/os-release`; force a specific one with the env var `LOLI_P
 
 ## Features
 
-- **Dashboard** — start/stop/restart services (Apache, Nginx, MariaDB, PostgreSQL, Redis, Memcached, MongoDB), with an *Install* button for services that aren't yet installed. Switch between **card** and **list** views.
-- **Database Tools** — phpMyAdmin (automatic setup), pgweb, and Mailpit (downloaded & launched on demand).
+- **Dashboard** — start/stop/restart services (Apache, Nginx, MariaDB, PostgreSQL, Redis, Memcached, MongoDB), with an *Install* button for services that aren't yet installed. Switch between **card** and **list** views. The dashboard also hosts the **Database Tools** panel: phpMyAdmin (automatic setup), pgweb, and Mailpit (downloaded & launched on demand).
 - **Projects** — scan the web root, detect project type (Laravel, WordPress, Node.js, Go, Python, PHP), and quick actions: browser, file manager, terminal, editor.
+- **Preferences** — set the document root and per-service ports (Apache, Nginx, MariaDB, PostgreSQL, MongoDB).
 - **PHP Manager** — version info + extension toggles. On Debian: switch the active PHP version (Apache & Nginx) automatically.
 - **Port Sniper** — scan active ports and kill their processes.
 - **Process Monitor** — process list + filter + kill.
