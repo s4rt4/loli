@@ -2,8 +2,6 @@
   <img src="images/banner.png" alt="Loli — Localhost Linux" width="640">
 </p>
 
-<h1 align="center">Loli — Localhost Linux</h1>
-
 <p align="center">
   A lightweight desktop control panel for managing your local web development environment on <b>Linux</b>.
 </p>
@@ -33,7 +31,7 @@ Detection reads `/etc/os-release`; force a specific one with the env var `LOLI_P
 <p align="center"><i>Dashboard — card view: service status & quick controls</i></p>
 
 <p align="center">
-  <img src="images/dashboard-list.png" alt="Dashboard — list view" width="640">
+  <img src="images/dashboard-list.png" alt="Dashboard — list view" width="800">
 </p>
 
 <p align="center"><i>Dashboard — compact list view</i></p>
