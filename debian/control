@@ -1,0 +1,27 @@
+Source: loli
+Section: devel
+Priority: optional
+Maintainer: s4rt4 <surat.sarta@gmail.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.7.0
+Homepage: https://github.com/s4rt4/loli
+Rules-Requires-Root: no
+
+Package: loli
+Architecture: all
+Depends: ${misc:Depends},
+         python3,
+         python3-pyqt6,
+         python3-pyqt6.qtsvg,
+         python3-psutil
+Recommends: python3-qtawesome,
+            lxpolkit | policykit-1-gnome | mate-polkit | lxqt-policykit
+Description: Localhost Linux web development panel
+ Loli is a desktop control panel for managing a local web development
+ environment on Linux: Apache/Nginx, PHP-FPM, MariaDB, PostgreSQL, Redis,
+ Memcached and MongoDB, plus bundled-on-demand phpMyAdmin, pgweb and Mailpit.
+ .
+ Privileged actions run via pkexec, so a polkit authentication agent is
+ recommended for desktops that do not bundle one (XFCE/LXQt/minimal WMs).
+ The qtawesome icon set is optional; without it the UI falls back gracefully.
+ Downloadable tools are stored per-user in ~/.local/share/loli.

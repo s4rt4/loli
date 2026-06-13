@@ -1,0 +1,9 @@
+loli (1.0.2) unstable; urgency=medium
+
+  * Initial Debian package (native). Mirrors the RPM layout: app under
+    /usr/share/loli, launcher at /usr/bin/loli, .desktop and scalable icon.
+  * Distro is auto-detected at runtime (loli/platform_spec.py); on Debian the
+    panel drives apache2, redis-server, apt, a2enmod/a2ensite and per-version
+    PHP via update-alternatives.
+
+ -- s4rt4 <surat.sarta@gmail.com>  Sat, 13 Jun 2026 12:45:59 +0700

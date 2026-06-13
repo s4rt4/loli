@@ -1,0 +1,27 @@
+#!/usr/bin/make -f
+# Loli is pure Python — there is nothing to compile. We override the install
+# step to stage files into the package tree exactly like packaging/loli.spec
+# does for the RPM, so both packages ship an identical on-disk layout.
+
+export DH_VERBOSE = 1
+
+DESTDIR = debian/loli
+
+%:
+	dh $@
+
+override_dh_auto_build:
+
+override_dh_auto_test:
+
+override_dh_auto_install:
+	install -Dm0644 web_panel.py   $(DESTDIR)/usr/share/loli/web_panel.py
+	install -dm0755 $(DESTDIR)/usr/share/loli/loli
+	install -m0644  loli/*.py      $(DESTDIR)/usr/share/loli/loli/
+	install -Dm0644 logo.svg       $(DESTDIR)/usr/share/loli/logo.svg
+	install -Dm0644 logo-tray.svg  $(DESTDIR)/usr/share/loli/logo-tray.svg
+	install -dm0755 $(DESTDIR)/usr/share/loli/icons
+	install -m0644  icons/*.svg    $(DESTDIR)/usr/share/loli/icons/
+	install -Dm0755 packaging/loli.launcher $(DESTDIR)/usr/bin/loli
+	install -Dm0644 packaging/loli.desktop  $(DESTDIR)/usr/share/applications/loli.desktop
+	install -Dm0644 logo-tray.svg  $(DESTDIR)/usr/share/icons/hicolor/scalable/apps/loli.svg
