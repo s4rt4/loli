@@ -12,7 +12,15 @@ QWidget#Sidebar QLabel { color: white; }
 QPushButton#MenuBtn { text-align: left; padding: 12px 20px; background-color: transparent; border: none; color: #94a3b8; font-size: 14px; border-radius: 0px; }
 QPushButton#MenuBtn:hover { background-color: #334155; color: white; }
 QPushButton#MenuBtn:checked { background-color: #3b82f6; color: white; font-weight: bold; border-left: 4px solid white; }
+QPushButton#MenuBtn[collapsed="true"] { padding: 12px 0px; text-align: center; }
+QPushButton#SidebarToggle { background-color: transparent; border: none; padding: 6px; border-radius: 6px; }
+QPushButton#SidebarToggle:hover { background-color: #334155; }
 QFrame#Card { background-color: white; border-radius: 12px; border: 1px solid #e2e8f0; }
+QFrame#ItemCard { background-color: #f8fafc; border-radius: 10px; border: 1px solid #e2e8f0; }
+QFrame#ItemCard:hover { border: 1px solid #cbd5e1; background-color: #ffffff; }
+QPushButton#ViewToggle { background-color: white; border: 1px solid #cbd5e1; color: #64748b; padding: 7px 10px; }
+QPushButton#ViewToggle:hover { background-color: #eff6ff; border: 1px solid #93c5fd; }
+QPushButton#ViewToggle:checked { background-color: #3b82f6; border: 1px solid #3b82f6; color: white; }
 QLabel#H1 { font-size: 18px; font-weight: bold; color: #1e293b; margin-bottom: 15px; }
 QLineEdit, QComboBox { background-color: white; color: #1e293b; border: 1px solid #cbd5e1; padding: 7px; border-radius: 6px; }
 QLineEdit:focus, QComboBox:focus { border: 1px solid #3b82f6; }

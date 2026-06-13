@@ -17,12 +17,12 @@ import tempfile
 import webbrowser
 
 import psutil
-from PyQt6.QtCore import Qt, QSize, QTimer
+from PyQt6.QtCore import Qt, QSize, QTimer, QSettings
 from PyQt6.QtGui import QColor, QFont, QIcon, QPixmap, QPainter
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
                              QFrame, QMessageBox, QTextEdit, QLineEdit, QFileDialog,
                              QComboBox, QProgressBar, QGridLayout, QCheckBox, QScrollArea,
-                             QStackedWidget,
+                             QStackedWidget, QButtonGroup,
                              QTableWidget, QTableWidgetItem, QHeaderView, QTabWidget,
                              QSizePolicy)
 
@@ -33,7 +33,8 @@ from .platform_spec import detect
 from .services import (validate_domain, validate_path, validate_port, validate_username,
                        run_root_script, run_async, get_web_root, port_in_use,
                        open_path, open_terminal, open_editor)
-from .widgets import Card, title_block, svg_icon, app_icon, load_logo_pixmap, HAS_ICONS
+from .widgets import (Card, FlowLayout, title_block, svg_icon, app_icon,
+                      load_logo_pixmap, HAS_ICONS)
 
 PLAT = detect()
 
@@ -50,6 +51,33 @@ class DashboardPage(QWidget):
         header = QHBoxLayout()
         header.addWidget(title_block("Dashboard", "Service status & quick controls"))
         header.addStretch()
+
+        # Toggle tampilan list vs card (mirip Google Fonts) — mengatur kedua list
+        self.view_mode = QSettings("Loli", "Loli").value("dashboard/view_mode", "list")
+        if self.view_mode not in ("list", "card"):
+            self.view_mode = "list"
+        self.view_group = QButtonGroup(self)
+        self.btn_view_list = QPushButton()
+        self.btn_view_list.setObjectName("ViewToggle")
+        self.btn_view_list.setCheckable(True)
+        self.btn_view_list.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_view_list.setToolTip("List view")
+        self.btn_view_card = QPushButton()
+        self.btn_view_card.setObjectName("ViewToggle")
+        self.btn_view_card.setCheckable(True)
+        self.btn_view_card.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_view_card.setToolTip("Card view")
+        self.view_group.addButton(self.btn_view_list)
+        self.view_group.addButton(self.btn_view_card)
+        self.btn_view_list.clicked.connect(lambda: self.set_view_mode("list"))
+        self.btn_view_card.clicked.connect(lambda: self.set_view_mode("card"))
+        view_box = QHBoxLayout()
+        view_box.setSpacing(0)
+        view_box.addWidget(self.btn_view_list)
+        view_box.addWidget(self.btn_view_card)
+        header.addLayout(view_box)
+        header.addSpacing(10)
+
         btn_local = QPushButton(" Open Localhost")
         btn_local.setObjectName("BtnGhost")
         btn_local.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -70,175 +98,26 @@ class DashboardPage(QWidget):
         header.addWidget(btn_quit)
         layout.addLayout(header)
 
-        card_db = Card()
-        card_db.layout.addWidget(QLabel("Database Tools", objectName="H1"))
+        self.card_db = Card()
+        self.card_db.layout.addWidget(QLabel("Database Tools", objectName="H1"))
+        self._db_body = None
+        layout.addWidget(self.card_db)
 
-        row_pma = QHBoxLayout()
-        lbl_pma = QLabel("phpMyAdmin (MySQL/MariaDB)")
-        lbl_pma.setStyleSheet("font-weight: 600; font-size: 14px; color: #1e293b;")
-        lbl_pma.setFixedWidth(224)
-        row_pma.addWidget(lbl_pma)
-        self.lbl_pma_status = QLabel("...")
-        self.lbl_pma_status.setObjectName("StatusNA")
-        self.lbl_pma_status.setFixedHeight(24)
-        row_pma.addWidget(self.lbl_pma_status, 0, Qt.AlignmentFlag.AlignVCenter)
-        row_pma.addStretch()
-        btn_pma_open = QPushButton(" Open")
-        btn_pma_open.setObjectName("BtnPrimary")
-        btn_pma_open.setFixedWidth(92)
-        if HAS_ICONS: btn_pma_open.setIcon(app_icon("fa5s.external-link-alt", color="white"))
-        btn_pma_open.clicked.connect(lambda: webbrowser.open("http://localhost/phpmyadmin"))
-        self.btn_pma_setup = QPushButton(" Setup / Repair")
-        self.btn_pma_setup.setObjectName("BtnGhost")
-        self.btn_pma_setup.setFixedWidth(148)
-        if HAS_ICONS: self.btn_pma_setup.setIcon(app_icon("fa5s.wrench", color="#334155"))
-        self.btn_pma_setup.clicked.connect(self.on_pma_action)
-        btn_pma_setup = self.btn_pma_setup
-        row_pma.addWidget(btn_pma_open)
-        row_pma.addWidget(btn_pma_setup)
-        row_pma.setContentsMargins(8, 5, 8, 5)
-        row_pma_w = QFrame(); row_pma_w.setObjectName("Row"); row_pma_w.setLayout(row_pma)
-        card_db.layout.addWidget(row_pma_w)
-
-        line_db = QFrame()
-        line_db.setFrameShape(QFrame.Shape.HLine)
-        line_db.setStyleSheet("color: #e2e8f0;")
-        card_db.layout.addWidget(line_db)
-
-        row_pg = QHBoxLayout()
-        lbl_pg = QLabel("pgweb (PostgreSQL)")
-        lbl_pg.setStyleSheet("font-weight: 600; font-size: 14px; color: #1e293b;")
-        lbl_pg.setFixedWidth(224)
-        row_pg.addWidget(lbl_pg)
-        self.lbl_pg_status = QLabel("● STOPPED")
-        self.lbl_pg_status.setObjectName("StatusStop")
-        self.lbl_pg_status.setFixedHeight(24)
-        row_pg.addWidget(self.lbl_pg_status, 0, Qt.AlignmentFlag.AlignVCenter)
-        row_pg.addStretch()
-        self.btn_pg_toggle = QPushButton(" Start")
-        self.btn_pg_toggle.setObjectName("BtnSuccess")
-        self.btn_pg_toggle.setFixedWidth(92)
-        if HAS_ICONS: self.btn_pg_toggle.setIcon(app_icon("fa5s.play", color="white"))
-        self.btn_pg_toggle.clicked.connect(self.toggle_pgweb)
-        btn_pg_open = QPushButton(" Open")
-        btn_pg_open.setObjectName("BtnGhost")
-        btn_pg_open.setFixedWidth(92)
-        if HAS_ICONS: btn_pg_open.setIcon(app_icon("fa5s.external-link-alt", color="#334155"))
-        btn_pg_open.clicked.connect(lambda: webbrowser.open("http://localhost:8081"))
-        row_pg.addWidget(self.btn_pg_toggle)
-        row_pg.addWidget(btn_pg_open)
-        row_pg.setContentsMargins(8, 5, 8, 5)
-        row_pg_w = QFrame(); row_pg_w.setObjectName("Row"); row_pg_w.setLayout(row_pg)
-        card_db.layout.addWidget(row_pg_w)
-
-        line_db3 = QFrame()
-        line_db3.setFrameShape(QFrame.Shape.HLine)
-        line_db3.setStyleSheet("color: #e2e8f0;")
-        card_db.layout.addWidget(line_db3)
-
-        row_mp = QHBoxLayout()
-        lbl_mp = QLabel("Mailpit (SMTP Inbox)")
-        lbl_mp.setStyleSheet("font-weight: 600; font-size: 14px; color: #1e293b;")
-        lbl_mp.setFixedWidth(224)
-        row_mp.addWidget(lbl_mp)
-        self.lbl_mp_status = QLabel("● STOPPED")
-        self.lbl_mp_status.setObjectName("StatusStop")
-        self.lbl_mp_status.setFixedHeight(24)
-        row_mp.addWidget(self.lbl_mp_status, 0, Qt.AlignmentFlag.AlignVCenter)
-        row_mp.addStretch()
-        self.btn_mp_toggle = QPushButton(" Start")
-        self.btn_mp_toggle.setObjectName("BtnSuccess")
-        self.btn_mp_toggle.setFixedWidth(92)
-        if HAS_ICONS: self.btn_mp_toggle.setIcon(app_icon("fa5s.play", color="white"))
-        self.btn_mp_toggle.clicked.connect(self.toggle_mailpit)
-        btn_mp_open = QPushButton(" Open")
-        btn_mp_open.setObjectName("BtnGhost")
-        btn_mp_open.setFixedWidth(92)
-        if HAS_ICONS: btn_mp_open.setIcon(app_icon("fa5s.external-link-alt", color="#334155"))
-        btn_mp_open.clicked.connect(lambda: webbrowser.open(f"http://localhost:{MAILPIT_UI_PORT}"))
-        row_mp.addWidget(self.btn_mp_toggle)
-        row_mp.addWidget(btn_mp_open)
-        row_mp.setContentsMargins(8, 5, 8, 5)
-        row_mp_w = QFrame(); row_mp_w.setObjectName("Row"); row_mp_w.setLayout(row_mp)
-        card_db.layout.addWidget(row_mp_w)
-
-        layout.addWidget(card_db)
-
-        card_svc = Card()
-        card_svc.layout.addWidget(QLabel("Service Status", objectName="H1"))
-        
         self.services = list(PLAT.services)
         # service -> package name for the Install button (when not yet installed)
         self.svc_packages = dict(PLAT.svc_packages)
-
         self.svc_widgets = {}
 
-        for sys_name, display_name, icon_name in self.services:
-            row = QHBoxLayout()
-            lbl_icon = QLabel()
-            if HAS_ICONS: lbl_icon.setPixmap(app_icon(icon_name, color="#334155").pixmap(24, 24))
-            row.addWidget(lbl_icon)
-            
-            lbl_name = QLabel(display_name)
-            lbl_name.setStyleSheet("font-weight: bold; font-size: 14px; color: #1e293b;")
-            lbl_name.setFixedWidth(142)
-            row.addWidget(lbl_name)
-            row.addSpacing(16)
+        self.card_svc = Card()
+        self.card_svc.layout.addWidget(QLabel("Service Status", objectName="H1"))
+        self._svc_body = None
+        layout.addWidget(self.card_svc)
 
-            lbl_status = QLabel("Checking...")
-            lbl_status.setObjectName("StatusNA")
-            lbl_status.setFixedHeight(24)
-            row.addWidget(lbl_status, 0, Qt.AlignmentFlag.AlignVCenter)
-            row.addStretch()
-
-            action_stack = QStackedWidget()
-            action_stack.setFixedWidth(95)
-            
-            btn_start = QPushButton(" Start")
-            btn_start.setObjectName("BtnSuccess")
-            if HAS_ICONS: btn_start.setIcon(app_icon("fa5s.play", color="white"))
-            btn_start.clicked.connect(lambda checked, s=sys_name: self.run_cmd(s, "start"))
-            
-            btn_stop = QPushButton(" Stop")
-            btn_stop.setObjectName("BtnDanger")
-            if HAS_ICONS: btn_stop.setIcon(app_icon("fa5s.stop", color="white"))
-            btn_stop.clicked.connect(lambda checked, s=sys_name: self.run_cmd(s, "stop"))
-            
-            action_stack.addWidget(btn_start)
-            action_stack.addWidget(btn_stop)
-
-            btn_restart = QPushButton(" Restart")
-            btn_restart.setObjectName("BtnPrimary")
-            btn_restart.setFixedWidth(105)
-            if HAS_ICONS: btn_restart.setIcon(app_icon("fa5s.sync", color="white"))
-            btn_restart.clicked.connect(lambda checked, s=sys_name: self.run_cmd(s, "restart"))
-
-            btn_install = QPushButton(" Install")
-            btn_install.setObjectName("BtnGhost")
-            btn_install.setFixedWidth(150)
-            if HAS_ICONS: btn_install.setIcon(app_icon("fa5s.download", color="#334155"))
-            btn_install.clicked.connect(lambda checked, s=sys_name: self.install_svc(s))
-            btn_install.hide()
-
-            row.addWidget(action_stack)
-            row.addWidget(btn_restart)
-            row.addWidget(btn_install)
-            row.setContentsMargins(8, 5, 8, 5)
-            row_w = QFrame(); row_w.setObjectName("Row"); row_w.setLayout(row)
-            card_svc.layout.addWidget(row_w)
-
-            self.svc_widgets[sys_name] = {
-                'status': lbl_status, 'action_stack': action_stack,
-                'btn_restart': btn_restart, 'btn_install': btn_install,
-                'icon': lbl_icon, 'icon_name': icon_name,
-            }
-            
-            line = QFrame()
-            line.setFrameShape(QFrame.Shape.HLine)
-            line.setStyleSheet("color: #e2e8f0;")
-            card_svc.layout.addWidget(line)
-
-        layout.addWidget(card_svc)
+        # Bangun isi kedua card sesuai mode tampilan aktif (list / card)
+        self._rebuild_dashboard_items()
+        self.btn_view_list.setChecked(self.view_mode == "list")
+        self.btn_view_card.setChecked(self.view_mode == "card")
+        self._refresh_view_icons()
 
         card_console = Card()
         card_console.layout.addWidget(QLabel("Terminal Logs (Execution Feedback)", objectName="H1"))
@@ -256,6 +135,208 @@ class DashboardPage(QWidget):
         self.timer.timeout.connect(self.update_ui)
         self.timer.start(2000)
         self.update_ui()
+
+    # ----- List / Card view (toggle di header Dashboard) ------------------
+
+    def set_view_mode(self, mode: str):
+        if mode not in ("list", "card") or mode == self.view_mode:
+            # Klik tombol yang sudah aktif: cukup sinkronkan state checked
+            self.btn_view_list.setChecked(self.view_mode == "list")
+            self.btn_view_card.setChecked(self.view_mode == "card")
+            return
+        self.view_mode = mode
+        QSettings("Loli", "Loli").setValue("dashboard/view_mode", mode)
+        self.btn_view_list.setChecked(mode == "list")
+        self.btn_view_card.setChecked(mode == "card")
+        self._refresh_view_icons()
+        self._rebuild_dashboard_items()
+        self.update_ui()
+
+    def _refresh_view_icons(self):
+        if not HAS_ICONS:
+            return
+        self.btn_view_list.setIcon(app_icon("fa5s.bars",
+            color="white" if self.view_mode == "list" else "#64748b"))
+        self.btn_view_card.setIcon(app_icon("fa5s.th-large",
+            color="white" if self.view_mode == "card" else "#64748b"))
+
+    def _rebuild_dashboard_items(self):
+        db_specs = [self._create_pma_item(), self._create_pg_item(), self._create_mp_item()]
+        self._fill_body(self.card_db, "_db_body", db_specs, self.view_mode)
+        self.svc_widgets = {}
+        svc_specs = [self._create_svc_item(s) for s in self.services]
+        self._fill_body(self.card_svc, "_svc_body", svc_specs, self.view_mode)
+        self.update_db_status()
+
+    def _fill_body(self, card, attr, specs, mode):
+        old = getattr(self, attr, None)
+        if old is not None:
+            card.layout.removeWidget(old)
+            old.setParent(None)
+            old.deleteLater()
+        body = QWidget()
+        if mode == "card":
+            sp = body.sizePolicy()
+            sp.setHeightForWidth(True)
+            body.setSizePolicy(sp)
+            flow = FlowLayout(body, margin=0, hspacing=12, vspacing=12)
+            for spec in specs:
+                flow.addWidget(self._arrange_card(spec))
+        else:
+            v = QVBoxLayout(body)
+            v.setContentsMargins(0, 0, 0, 0)
+            v.setSpacing(0)
+            for i, spec in enumerate(specs):
+                v.addWidget(self._arrange_row(spec))
+                if i < len(specs) - 1:
+                    line = QFrame()
+                    line.setFrameShape(QFrame.Shape.HLine)
+                    line.setStyleSheet("color: #e2e8f0;")
+                    v.addWidget(line)
+        setattr(self, attr, body)
+        card.layout.addWidget(body)
+
+    def _arrange_row(self, spec):
+        row = QHBoxLayout()
+        row.setContentsMargins(8, 5, 8, 5)
+        if spec["icon"] is not None:
+            row.addWidget(spec["icon"])
+        name = spec["name_label"]
+        name.setWordWrap(False)
+        name.setFixedWidth(spec["name_w"])
+        row.addWidget(name)
+        if spec["icon"] is not None:
+            row.addSpacing(16)
+        row.addWidget(spec["status"], 0, Qt.AlignmentFlag.AlignVCenter)
+        row.addStretch()
+        for b in spec["buttons"]:
+            row.addWidget(b)
+        f = QFrame(); f.setObjectName("Row"); f.setLayout(row)
+        return f
+
+    def _arrange_card(self, spec):
+        card = QFrame(); card.setObjectName("ItemCard"); card.setFixedWidth(290)
+        v = QVBoxLayout(card)
+        v.setContentsMargins(16, 14, 16, 14)
+        v.setSpacing(12)
+        top = QHBoxLayout(); top.setSpacing(8)
+        if spec["icon"] is not None:
+            top.addWidget(spec["icon"], 0, Qt.AlignmentFlag.AlignTop)
+        name = spec["name_label"]
+        name.setWordWrap(True)
+        name.setFixedWidth(16777215)
+        top.addWidget(name, 1)
+        top.addWidget(spec["status"], 0, Qt.AlignmentFlag.AlignTop)
+        v.addLayout(top)
+        btnrow = QHBoxLayout(); btnrow.setSpacing(8)
+        for b in spec["buttons"]:
+            btnrow.addWidget(b)
+        btnrow.addStretch()
+        v.addLayout(btnrow)
+        return card
+
+    def _create_pma_item(self):
+        name = QLabel("phpMyAdmin (MySQL/MariaDB)")
+        name.setStyleSheet("font-weight: 600; font-size: 14px; color: #1e293b;")
+        self.lbl_pma_status = QLabel("...")
+        self.lbl_pma_status.setObjectName("StatusNA")
+        self.lbl_pma_status.setFixedHeight(24)
+        btn_open = QPushButton(" Open")
+        btn_open.setObjectName("BtnPrimary")
+        btn_open.setFixedWidth(92)
+        if HAS_ICONS: btn_open.setIcon(app_icon("fa5s.external-link-alt", color="white"))
+        btn_open.clicked.connect(lambda: webbrowser.open("http://localhost/phpmyadmin"))
+        self.btn_pma_setup = QPushButton(" Setup / Repair")
+        self.btn_pma_setup.setObjectName("BtnGhost")
+        self.btn_pma_setup.setFixedWidth(148)
+        if HAS_ICONS: self.btn_pma_setup.setIcon(app_icon("fa5s.wrench", color="#334155"))
+        self.btn_pma_setup.clicked.connect(self.on_pma_action)
+        return dict(name_label=name, name_w=224, icon=None,
+                    status=self.lbl_pma_status, buttons=[btn_open, self.btn_pma_setup])
+
+    def _create_pg_item(self):
+        name = QLabel("pgweb (PostgreSQL)")
+        name.setStyleSheet("font-weight: 600; font-size: 14px; color: #1e293b;")
+        self.lbl_pg_status = QLabel("● STOPPED")
+        self.lbl_pg_status.setObjectName("StatusStop")
+        self.lbl_pg_status.setFixedHeight(24)
+        self.btn_pg_toggle = QPushButton(" Start")
+        self.btn_pg_toggle.setObjectName("BtnSuccess")
+        self.btn_pg_toggle.setFixedWidth(92)
+        if HAS_ICONS: self.btn_pg_toggle.setIcon(app_icon("fa5s.play", color="white"))
+        self.btn_pg_toggle.clicked.connect(self.toggle_pgweb)
+        btn_open = QPushButton(" Open")
+        btn_open.setObjectName("BtnGhost")
+        btn_open.setFixedWidth(92)
+        if HAS_ICONS: btn_open.setIcon(app_icon("fa5s.external-link-alt", color="#334155"))
+        btn_open.clicked.connect(lambda: webbrowser.open(f"http://localhost:{PGWEB_PORT}"))
+        return dict(name_label=name, name_w=224, icon=None,
+                    status=self.lbl_pg_status, buttons=[self.btn_pg_toggle, btn_open])
+
+    def _create_mp_item(self):
+        name = QLabel("Mailpit (SMTP Inbox)")
+        name.setStyleSheet("font-weight: 600; font-size: 14px; color: #1e293b;")
+        self.lbl_mp_status = QLabel("● STOPPED")
+        self.lbl_mp_status.setObjectName("StatusStop")
+        self.lbl_mp_status.setFixedHeight(24)
+        self.btn_mp_toggle = QPushButton(" Start")
+        self.btn_mp_toggle.setObjectName("BtnSuccess")
+        self.btn_mp_toggle.setFixedWidth(92)
+        if HAS_ICONS: self.btn_mp_toggle.setIcon(app_icon("fa5s.play", color="white"))
+        self.btn_mp_toggle.clicked.connect(self.toggle_mailpit)
+        btn_open = QPushButton(" Open")
+        btn_open.setObjectName("BtnGhost")
+        btn_open.setFixedWidth(92)
+        if HAS_ICONS: btn_open.setIcon(app_icon("fa5s.external-link-alt", color="#334155"))
+        btn_open.clicked.connect(lambda: webbrowser.open(f"http://localhost:{MAILPIT_UI_PORT}"))
+        return dict(name_label=name, name_w=224, icon=None,
+                    status=self.lbl_mp_status, buttons=[self.btn_mp_toggle, btn_open])
+
+    def _create_svc_item(self, svc):
+        sys_name, display_name, icon_name = svc
+        lbl_icon = QLabel()
+        if HAS_ICONS: lbl_icon.setPixmap(app_icon(icon_name, color="#334155").pixmap(24, 24))
+
+        name = QLabel(display_name)
+        name.setStyleSheet("font-weight: bold; font-size: 14px; color: #1e293b;")
+
+        lbl_status = QLabel("Checking...")
+        lbl_status.setObjectName("StatusNA")
+        lbl_status.setFixedHeight(24)
+
+        action_stack = QStackedWidget()
+        action_stack.setFixedWidth(95)
+        btn_start = QPushButton(" Start")
+        btn_start.setObjectName("BtnSuccess")
+        if HAS_ICONS: btn_start.setIcon(app_icon("fa5s.play", color="white"))
+        btn_start.clicked.connect(lambda checked, s=sys_name: self.run_cmd(s, "start"))
+        btn_stop = QPushButton(" Stop")
+        btn_stop.setObjectName("BtnDanger")
+        if HAS_ICONS: btn_stop.setIcon(app_icon("fa5s.stop", color="white"))
+        btn_stop.clicked.connect(lambda checked, s=sys_name: self.run_cmd(s, "stop"))
+        action_stack.addWidget(btn_start)
+        action_stack.addWidget(btn_stop)
+
+        btn_restart = QPushButton(" Restart")
+        btn_restart.setObjectName("BtnPrimary")
+        btn_restart.setFixedWidth(105)
+        if HAS_ICONS: btn_restart.setIcon(app_icon("fa5s.sync", color="white"))
+        btn_restart.clicked.connect(lambda checked, s=sys_name: self.run_cmd(s, "restart"))
+
+        btn_install = QPushButton(" Install")
+        btn_install.setObjectName("BtnGhost")
+        btn_install.setFixedWidth(150)
+        if HAS_ICONS: btn_install.setIcon(app_icon("fa5s.download", color="#334155"))
+        btn_install.clicked.connect(lambda checked, s=sys_name: self.install_svc(s))
+        btn_install.hide()
+
+        self.svc_widgets[sys_name] = {
+            'status': lbl_status, 'action_stack': action_stack,
+            'btn_restart': btn_restart, 'btn_install': btn_install,
+            'icon': lbl_icon, 'icon_name': icon_name,
+        }
+        return dict(name_label=name, name_w=142, icon=lbl_icon,
+                    status=lbl_status, buttons=[action_stack, btn_restart, btn_install])
 
     def open_root_dir(self):
         try:

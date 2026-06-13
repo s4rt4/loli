@@ -7,7 +7,7 @@ import sys
 import webbrowser
 
 import psutil
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, QSettings
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QLabel, QPushButton, QFrame, QMessageBox,
@@ -49,10 +49,24 @@ class MainWindow(QMainWindow):
         sidebar = QWidget()
         sidebar.setObjectName("Sidebar")
         sidebar.setFixedWidth(230)
+        self.sidebar = sidebar
         side_lay = QVBoxLayout()
         side_lay.setContentsMargins(0,20,0,20)
-        
+
+        # Tombol collapse/expand sidebar (hamburger), rata kanan saat expanded
+        toggle_row = QHBoxLayout()
+        toggle_row.setContentsMargins(12, 0, 12, 0)
+        self.btn_collapse = QPushButton()
+        self.btn_collapse.setObjectName("SidebarToggle")
+        self.btn_collapse.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_collapse.setToolTip("Collapse / expand sidebar")
+        self.btn_collapse.clicked.connect(self.toggle_sidebar)
+        toggle_row.addStretch()
+        toggle_row.addWidget(self.btn_collapse)
+        side_lay.addLayout(toggle_row)
+
         brand = QWidget()
+        self.brand = brand
         brand_lay = QVBoxLayout(brand)
         brand_lay.setContentsMargins(0, 14, 0, 20)
         brand_lay.setSpacing(0)
@@ -87,6 +101,7 @@ class MainWindow(QMainWindow):
         side_lay.addStretch()
 
         sys_frame = QFrame()
+        self.sys_frame = sys_frame
         sys_lay = QVBoxLayout(sys_frame)
         sys_lay.setContentsMargins(15, 10, 15, 10)
         sys_lay.setSpacing(8)
@@ -129,7 +144,12 @@ class MainWindow(QMainWindow):
         for idx, b in enumerate(self.menu_btns):
             b.clicked.connect(lambda checked, i=idx: self.stack.setCurrentIndex(i))
         self.menu_btns[0].setChecked(True)
-        
+
+        # Pulihkan kondisi sidebar (collapsed/expanded) dari sesi sebelumnya
+        collapsed = QSettings("Loli", "Loli").value("sidebar/collapsed", False, type=bool)
+        self.sidebar_collapsed = False
+        self._apply_collapsed(collapsed)
+
         self.setup_tray_icon()
         
         self.global_timer = QTimer()
@@ -139,6 +159,25 @@ class MainWindow(QMainWindow):
 
         # XFCE / WM minimalis kadang tak menjalankan agen polkit -> pkexec gagal diam-diam. Cek sekali.
         QTimer.singleShot(1500, self._check_polkit_agent)
+
+    def toggle_sidebar(self):
+        self._apply_collapsed(not self.sidebar_collapsed)
+
+    def _apply_collapsed(self, collapsed: bool):
+        self.sidebar_collapsed = collapsed
+        self.sidebar.setFixedWidth(64 if collapsed else 230)
+        # Logo & panel system resources hanya relevan saat lebar penuh
+        self.brand.setVisible(not collapsed)
+        self.sys_frame.setVisible(not collapsed)
+        for b in self.menu_btns:
+            b.setText("" if collapsed else b._full_text)
+            b.setToolTip(b._full_text if collapsed else "")
+            b.setProperty("collapsed", collapsed)
+            b.style().unpolish(b)
+            b.style().polish(b)
+        icon = "fa5s.angle-double-right" if collapsed else "fa5s.angle-double-left"
+        self.btn_collapse.setIcon(svg_icon(icon, "#cbd5e1") or app_icon(icon, color="#cbd5e1"))
+        QSettings("Loli", "Loli").setValue("sidebar/collapsed", collapsed)
 
     def _check_polkit_agent(self):
         if not shutil.which("pkexec") or polkit_agent_running():
@@ -188,6 +227,7 @@ class MainWindow(QMainWindow):
 
     def mk_btn(self, text: str, icon: str, svg: str = None) -> QPushButton:
         btn = QPushButton(text)
+        btn._full_text = text
         btn.setObjectName("MenuBtn")
         btn.setCheckable(True)
         btn.setAutoExclusive(True)
@@ -203,8 +243,13 @@ class MainWindow(QMainWindow):
         return btn
 
     def setup_tray_icon(self):
-        # GNOME modern sering tanpa system tray -> deteksi agar window tidak "hilang"
+        # GNOME modern sering tanpa system tray -> deteksi agar window tidak "hilang".
+        # Tanpa tray, JANGAN buat/`show()` QSystemTrayIcon: di GNOME hal itu memicu
+        # "QDBusTrayIcon ... ServiceUnknown" karena tak ada StatusNotifier host.
         self.has_tray = QSystemTrayIcon.isSystemTrayAvailable()
+        if not self.has_tray:
+            self.tray_icon = None
+            return
         self.tray_icon = QSystemTrayIcon(self)
         icon_path = TRAY_ICON_PATH if os.path.exists(TRAY_ICON_PATH) else LOGO_PATH
         if os.path.exists(icon_path):
@@ -252,8 +297,9 @@ class MainWindow(QMainWindow):
         script = PLAT.start_all_script()
 
         def done(_):
-            self.tray_icon.showMessage(APP_NAME, "Start All Services dijalankan.",
-                                       QSystemTrayIcon.MessageIcon.Information, 2500)
+            if self.tray_icon is not None:
+                self.tray_icon.showMessage(APP_NAME, "Start All Services dijalankan.",
+                                           QSystemTrayIcon.MessageIcon.Information, 2500)
 
         run_async(self, lambda: run_root_script(script), done)
 
@@ -261,8 +307,9 @@ class MainWindow(QMainWindow):
         script = PLAT.stop_all_script()
 
         def done(_):
-            self.tray_icon.showMessage(APP_NAME, "Stop All Services dijalankan.",
-                                       QSystemTrayIcon.MessageIcon.Information, 2500)
+            if self.tray_icon is not None:
+                self.tray_icon.showMessage(APP_NAME, "Stop All Services dijalankan.",
+                                           QSystemTrayIcon.MessageIcon.Information, 2500)
 
         run_async(self, lambda: run_root_script(script), done)
 
@@ -298,6 +345,10 @@ class MainWindow(QMainWindow):
         QApplication.instance().quit()
 
 def main():
+    # GNOME/Wayland kerap memunculkan warning kosmetik saat registrasi app-id ke
+    # xdg-desktop-portal ("Could not register app ID ..."). Diamkan kategorinya.
+    _rules = os.environ.get("QT_LOGGING_RULES", "")
+    os.environ["QT_LOGGING_RULES"] = (_rules + ";qt.qpa.services=false").lstrip(";")
     app = QApplication(sys.argv)
     # Identitas app -> GNOME/Wayland mencocokkan ke loli.desktop (ikon & nama di dock, bukan "python3")
     app.setApplicationName("Loli")

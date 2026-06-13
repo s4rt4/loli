@@ -1,5 +1,5 @@
 Name:           loli
-Version:        1.0.2
+Version:        1.0.3
 Release:        1%{?dist}
 Summary:        Loli — Localhost Linux web development panel
 
@@ -53,6 +53,16 @@ install -Dm0644 logo-tray.svg  %{buildroot}%{_datadir}/icons/hicolor/scalable/ap
 %{_datadir}/icons/hicolor/scalable/apps/loli.svg
 
 %changelog
+* Sat Jun 13 2026 s4rt4 <surat.sarta@gmail.com> - 1.0.3-1
+- Sidebar: tombol collapse/expand (230px <-> 64px). Saat collapse hanya ikon yang
+  tampil; teks menu jadi tooltip, logo & panel System Resources disembunyikan.
+  Kondisi terakhir diingat antar sesi (QSettings).
+- Dashboard: toggle tampilan List/Card (mirip Google Fonts) untuk Database Tools
+  dan Service Status sekaligus. Mode Card memakai grid responsif (jumlah kolom
+  mengikuti lebar window). Pilihan tampilan diingat antar sesi.
+- Hilangkan warning kosmetik di terminal: tidak membuat tray icon saat sesi tanpa
+  system tray (GNOME), dan mendiamkan log registrasi xdg-desktop-portal.
+
 * Thu Jun 11 2026 s4rt4 <surat.sarta@gmail.com> - 1.0.2-1
 - Internal refactor (no user-facing changes): the two hand-maintained
   per-distro files are unified into a single `loli/` package. Distro differences
