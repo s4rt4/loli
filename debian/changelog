@@ -1,3 +1,12 @@
+loli (1.0.3) unstable; urgency=medium
+
+  * Sidebar can now collapse to an icon-only rail (toggle at the top); the nav
+    menu scrolls so the system-resource bars stay pinned and never overlap.
+  * Fix dashboard service-status action buttons (Start/Stop/Restart) stretching
+    wide when the sidebar is collapsed.
+
+ -- s4rt4 <surat.sarta@gmail.com>  Sat, 13 Jun 2026 18:20:00 +0700
+
 loli (1.0.2) unstable; urgency=medium
 
   * Initial Debian package (native). Mirrors the RPM layout: app under

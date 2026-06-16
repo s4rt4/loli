@@ -1,5 +1,5 @@
 Name:           loli
-Version:        1.0.2
+Version:        1.0.3
 Release:        1%{?dist}
 Summary:        Loli — Localhost Linux web development panel
 
@@ -53,6 +53,12 @@ install -Dm0644 logo-tray.svg  %{buildroot}%{_datadir}/icons/hicolor/scalable/ap
 %{_datadir}/icons/hicolor/scalable/apps/loli.svg
 
 %changelog
+* Sat Jun 13 2026 s4rt4 <surat.sarta@gmail.com> - 1.0.3-1
+- Sidebar can now collapse to an icon-only rail (toggle at the top); the nav
+  menu scrolls so the system-resource bars stay pinned and never overlap.
+- Fix dashboard service-status action buttons (Start/Stop/Restart) stretching
+  wide when the sidebar is collapsed.
+
 * Thu Jun 11 2026 s4rt4 <surat.sarta@gmail.com> - 1.0.2-1
 - Internal refactor (no user-facing changes): the two hand-maintained
   per-distro files are unified into a single `loli/` package. Distro differences
