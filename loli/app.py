@@ -7,8 +7,9 @@ import sys
 import webbrowser
 
 import psutil
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QIcon
+from PyQt6.QtCore import (Qt, QTimer, QPropertyAnimation, QEasingCurve,
+                          QParallelAnimationGroup)
+from PyQt6.QtGui import QIcon, QPalette
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QLabel, QPushButton, QFrame, QMessageBox,
                              QStackedWidget, QProgressBar, QScrollArea, QSystemTrayIcon,
@@ -130,11 +131,11 @@ class MainWindow(QMainWindow):
         sys_lay.setSpacing(8)
 
         lbl_sys = QLabel("SYSTEM RESOURCES")
-        lbl_sys.setStyleSheet("color: #7f8c8d; font-size: 11px; font-weight: bold; margin-bottom: 5px;")
+        lbl_sys.setStyleSheet("color: #94a3b8; font-size: 11px; font-weight: bold; margin-bottom: 5px;")
         sys_lay.addWidget(lbl_sys)
 
         self.side_bars = {}
-        for label, color in [("CPU", "#3b82f6"), ("RAM", "#22c55e"), ("DISK", "#f1c40f")]:
+        for label, color in [("CPU", "#3b82f6"), ("RAM", "#22c55e"), ("DISK", "#eab308")]:
             row = QHBoxLayout()
             lbl = QLabel(label)
             lbl.setStyleSheet("color: #cbd5e1; font-size: 10px; font-weight: bold;")
@@ -208,7 +209,7 @@ class MainWindow(QMainWindow):
     @staticmethod
     def _load_color(v):
         if v < 60: return "#22c55e"
-        if v < 85: return "#f1c40f"
+        if v < 85: return "#eab308"
         return "#ef4444"
 
     def update_sidebar_resources(self):
@@ -249,10 +250,9 @@ class MainWindow(QMainWindow):
         self.sidebar_collapsed = not self.sidebar_collapsed
         self.apply_sidebar_state()
 
-    def apply_sidebar_state(self):
+    def apply_sidebar_state(self, animate=True):
         collapsed = self.sidebar_collapsed
-        self.sidebar.setFixedWidth(
-            self.SIDEBAR_W_COLLAPSED if collapsed else self.SIDEBAR_W_EXPANDED)
+        target = self.SIDEBAR_W_COLLAPSED if collapsed else self.SIDEBAR_W_EXPANDED
 
         for b in self.menu_btns:
             b.setText("" if collapsed else b._full_text)
@@ -273,6 +273,25 @@ class MainWindow(QMainWindow):
             self.logo_lbl.setFixedHeight(48 if collapsed else 76)
 
         self._set_toggle_icon()
+
+        # Lebar sidebar: instan saat init, animasi halus saat toggle.
+        if not animate:
+            self.sidebar.setFixedWidth(target)
+            return
+
+        start = self.sidebar.width()
+        if getattr(self, "_side_anim", None) is not None:
+            self._side_anim.stop()
+        grp = QParallelAnimationGroup(self)
+        for prop in (b"minimumWidth", b"maximumWidth"):
+            a = QPropertyAnimation(self.sidebar, prop, grp)
+            a.setDuration(160)
+            a.setStartValue(start)
+            a.setEndValue(target)
+            a.setEasingCurve(QEasingCurve.Type.InOutCubic)
+            grp.addAnimation(a)
+        self._side_anim = grp
+        grp.start()
 
     def _set_toggle_icon(self):
         collapsed = self.sidebar_collapsed
@@ -295,14 +314,20 @@ class MainWindow(QMainWindow):
             self.tray_icon.setIcon(QIcon.fromTheme("utilities-system-monitor", QIcon("")))
         self.tray_icon.setToolTip(APP_NAME)
 
+        menu = QMenu()
+        # Ikon menu tray harus mengikuti tema desktop: di dark mode teks menu jadi
+        # putih, jadi ikon gelap (#1e293b) nyaris tak terlihat. Tentukan warna ikon
+        # dari kecerahan latar menu (palette sistem) agar selalu kontras dgn teks.
+        win = menu.palette().color(QPalette.ColorRole.Window)
+        tray_icon_color = "#e2e8f0" if win.lightness() < 128 else "#1e293b"
+
         def add(menu, text, icon, fn):
             a = menu.addAction(text)
             if HAS_ICONS:
-                a.setIcon(app_icon(icon, color="#1e293b"))
+                a.setIcon(app_icon(icon, color=tray_icon_color))
             a.triggered.connect(fn)
             return a
 
-        menu = QMenu()
         add(menu, "Open Panel", "fa5s.window-maximize", self.show_panel)
         menu.addSeparator()
         add(menu, "Start All Services", "fa5s.play", self.start_all_services)

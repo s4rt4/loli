@@ -1,3 +1,17 @@
+loli (1.0.4) unstable; urgency=medium
+
+  * UI polish: animated sidebar collapse, slim scrollbars across all scroll
+    areas, :pressed/:disabled button states, busy feedback (button disabled +
+    "…") on service Start/Stop/Restart/Install, and corrected stray Flat-UI
+    accent colours in the system-resource panel.
+  * Fix dark-mode bugs: tray-menu icons now follow the desktop palette (they
+    were dark and invisible on a dark menu), and the Logs page tab bar gets
+    explicit colours so its text stays readable in dark mode.
+  * Fix UI flicker on rapid window resize by dropping the per-card drop-shadow
+    graphics effect in favour of a lightweight styled border.
+
+ -- s4rt4 <surat.sarta@gmail.com>  Wed, 17 Jun 2026 07:34:23 +0700
+
 loli (1.0.3) unstable; urgency=medium
 
   * Sidebar can now collapse to an icon-only rail (toggle at the top); the nav

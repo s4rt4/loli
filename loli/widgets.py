@@ -4,10 +4,9 @@ import logging
 import os
 
 from PyQt6.QtCore import QByteArray, QSize, Qt
-from PyQt6.QtGui import QColor, QIcon, QPainter, QPixmap
+from PyQt6.QtGui import QIcon, QPainter, QPixmap
 from PyQt6.QtSvg import QSvgRenderer
-from PyQt6.QtWidgets import (QFrame, QGraphicsDropShadowEffect, QHBoxLayout,
-                             QLabel, QVBoxLayout, QWidget)
+from PyQt6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget)
 
 from .config import ICON_DIR, LOGO_PATH
 
@@ -90,11 +89,8 @@ class Card(QFrame):
         self.layout.setContentsMargins(15, 15, 15, 15)
         self.layout.setSpacing(10)
         self.setLayout(self.layout)
-        shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(24)
-        shadow.setColor(QColor(15, 23, 42, 28))
-        shadow.setOffset(0, 4)
-        self.setGraphicsEffect(shadow)
+        # Latar solid agar double-buffering bekerja & tidak ada artefak saat resize.
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
 
 def title_block(title, subtitle):

@@ -85,14 +85,28 @@ class _Worker(QThread):
         self.finished_result.emit(res)
 
 
-def run_async(parent, fn, on_done=None):
-    """Run fn() on a worker thread; call on_done(result) back on the GUI thread."""
+def run_async(parent, fn, on_done=None, busy_btn=None):
+    """Run fn() on a worker thread; call on_done(result) back on the GUI thread.
+
+    If busy_btn is given, that button is disabled and shows a "…" label while the
+    task runs, then restored when it finishes (success or error)."""
     if not hasattr(parent, "_workers"):
         parent._workers = []
     w = _Worker(fn)
 
+    if busy_btn is not None:
+        busy_btn._prev_text = busy_btn.text()
+        busy_btn.setEnabled(False)
+        busy_btn.setText(" …")
+
+    def _restore():
+        if busy_btn is not None:
+            busy_btn.setEnabled(True)
+            busy_btn.setText(getattr(busy_btn, "_prev_text", busy_btn.text()))
+
     def _cb(res):
         try:
+            _restore()
             if on_done:
                 on_done(res)
         finally:

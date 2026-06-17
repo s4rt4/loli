@@ -199,12 +199,12 @@ class DashboardPage(QWidget):
             btn_start = QPushButton(" Start")
             btn_start.setObjectName("BtnSuccess")
             if HAS_ICONS: btn_start.setIcon(app_icon("fa5s.play", color="white"))
-            btn_start.clicked.connect(lambda checked, s=sys_name: self.run_cmd(s, "start"))
+            btn_start.clicked.connect(lambda checked, s=sys_name, b=btn_start: self.run_cmd(s, "start", b))
             
             btn_stop = QPushButton(" Stop")
             btn_stop.setObjectName("BtnDanger")
             if HAS_ICONS: btn_stop.setIcon(app_icon("fa5s.stop", color="white"))
-            btn_stop.clicked.connect(lambda checked, s=sys_name: self.run_cmd(s, "stop"))
+            btn_stop.clicked.connect(lambda checked, s=sys_name, b=btn_stop: self.run_cmd(s, "stop", b))
             
             action_stack.addWidget(btn_start)
             action_stack.addWidget(btn_stop)
@@ -213,13 +213,13 @@ class DashboardPage(QWidget):
             btn_restart.setObjectName("BtnPrimary")
             btn_restart.setMinimumWidth(105)
             if HAS_ICONS: btn_restart.setIcon(app_icon("fa5s.sync", color="white"))
-            btn_restart.clicked.connect(lambda checked, s=sys_name: self.run_cmd(s, "restart"))
+            btn_restart.clicked.connect(lambda checked, s=sys_name, b=btn_restart: self.run_cmd(s, "restart", b))
 
             btn_install = QPushButton(" Install")
             btn_install.setObjectName("BtnGhost")
             btn_install.setMinimumWidth(150)
             if HAS_ICONS: btn_install.setIcon(app_icon("fa5s.download", color="#334155"))
-            btn_install.clicked.connect(lambda checked, s=sys_name: self.install_svc(s))
+            btn_install.clicked.connect(lambda checked, s=sys_name, b=btn_install: self.install_svc(s, b))
             btn_install.hide()
 
             row.addWidget(action_stack)
@@ -335,7 +335,7 @@ class DashboardPage(QWidget):
                 tint = "#27ae60" if state == "running" else ("#cbd5e1" if state == "missing" else "#94a3b8")
                 widgets['icon'].setPixmap(app_icon(widgets['icon_name'], color=tint).pixmap(24, 24))
 
-    def install_svc(self, svc: str):
+    def install_svc(self, svc: str, btn=None):
         pkg = self.svc_packages.get(svc)
         if not pkg:
             return
@@ -350,7 +350,7 @@ class DashboardPage(QWidget):
                 self.console.verticalScrollBar().setValue(self.console.verticalScrollBar().maximum())
                 QTimer.singleShot(500, self.update_ui)
 
-            run_async(self, lambda: run_root_script(script), done_mongo)
+            run_async(self, lambda: run_root_script(script), done_mongo, busy_btn=btn)
             return
 
         self.console.append(f"\n> {PLAT.pkg_mgr} install {pkg}...")
@@ -369,9 +369,9 @@ class DashboardPage(QWidget):
             self.console.verticalScrollBar().setValue(self.console.verticalScrollBar().maximum())
             QTimer.singleShot(500, self.update_ui)
 
-        run_async(self, work, done)
+        run_async(self, work, done, busy_btn=btn)
 
-    def run_cmd(self, svc: str, action: str):
+    def run_cmd(self, svc: str, action: str, btn=None):
         if action == "start":
             if svc == PLAT.web_svc and self.check_svc("nginx"):
                 self.console.append("\n[WARNING] Matikan Nginx terlebih dahulu untuk mencegah konflik Port 80!")
@@ -414,7 +414,7 @@ class DashboardPage(QWidget):
             self.console.verticalScrollBar().setValue(self.console.verticalScrollBar().maximum())
             QTimer.singleShot(500, self.update_ui)
 
-        run_async(self, work, done)
+        run_async(self, work, done, busy_btn=btn)
 
     def check_svc(self, svc: str) -> bool:
         try:

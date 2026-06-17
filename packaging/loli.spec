@@ -1,5 +1,5 @@
 Name:           loli
-Version:        1.0.3
+Version:        1.0.4
 Release:        1%{?dist}
 Summary:        Loli — Localhost Linux web development panel
 
@@ -53,6 +53,16 @@ install -Dm0644 logo-tray.svg  %{buildroot}%{_datadir}/icons/hicolor/scalable/ap
 %{_datadir}/icons/hicolor/scalable/apps/loli.svg
 
 %changelog
+* Wed Jun 17 2026 s4rt4 <surat.sarta@gmail.com> - 1.0.4-1
+- UI polish: animated sidebar collapse, slim global scrollbars, :pressed/:disabled
+  button states, busy feedback on service action buttons, and corrected stray
+  Flat-UI accent colors in the system-resource panel.
+- Fix dark-mode bugs: tray-menu icons now follow the desktop palette (were dark
+  on a dark menu), and the Logs page tab bar gets explicit colors so its text is
+  readable in dark mode.
+- Fix UI flicker on rapid window resize by dropping the per-card drop-shadow
+  graphics effect in favor of a lightweight styled border.
+
 * Sat Jun 13 2026 s4rt4 <surat.sarta@gmail.com> - 1.0.3-1
 - Sidebar can now collapse to an icon-only rail (toggle at the top); the nav
   menu scrolls so the system-resource bars stay pinned and never overlap.
