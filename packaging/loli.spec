@@ -1,5 +1,5 @@
 Name:           loli
-Version:        1.0.4
+Version:        1.0.5
 Release:        1%{?dist}
 Summary:        Loli — Localhost Linux web development panel
 
@@ -53,6 +53,11 @@ install -Dm0644 logo-tray.svg  %{buildroot}%{_datadir}/icons/hicolor/scalable/ap
 %{_datadir}/icons/hicolor/scalable/apps/loli.svg
 
 %changelog
+* Wed Jun 17 2026 s4rt4 <surat.sarta@gmail.com> - 1.0.5-1
+- Further reduce resize flicker: the content viewport, page stack and each page
+  now fill a solid background colour, so a rapid resize erases exposed areas to
+  the panel background instead of flashing black.
+
 * Wed Jun 17 2026 s4rt4 <surat.sarta@gmail.com> - 1.0.4-1
 - UI polish: animated sidebar collapse, slim global scrollbars, :pressed/:disabled
   button states, busy feedback on service action buttons, and corrected stray

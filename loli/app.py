@@ -163,9 +163,21 @@ class MainWindow(QMainWindow):
             self.stack.addWidget(cls())
         # Bungkus konten dalam scroll area agar window bisa mengecil -> snap/tiling GNOME jalan
         content_scroll = QScrollArea()
+        content_scroll.setObjectName("ContentScroll")
         content_scroll.setWidgetResizable(True)
         content_scroll.setFrameShape(QFrame.Shape.NoFrame)
         content_scroll.setWidget(self.stack)
+        # Anti-flicker: beri latar solid #f8fafc pada viewport + stack + tiap page,
+        # supaya saat resize cepat (konten belum sempat repaint) area terisi warna
+        # latar yang sama, BUKAN buffer kosong/hitam. Tanpa WA_OpaquePaintEvent —
+        # Qt tetap meng-erase ke warna ini sebelum konten dilukis.
+        self.stack.setObjectName("ContentStack")
+        self.stack.setAutoFillBackground(True)
+        content_scroll.viewport().setAutoFillBackground(True)
+        for i in range(self.stack.count()):
+            page = self.stack.widget(i)
+            page.setAutoFillBackground(True)
+            page.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         main_lay.addWidget(content_scroll)
 
         for idx, b in enumerate(self.menu_btns):

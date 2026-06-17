@@ -1,3 +1,11 @@
+loli (1.0.5) unstable; urgency=medium
+
+  * Further reduce resize flicker: the content viewport, page stack and each
+    page now fill a solid background colour, so a rapid resize erases exposed
+    areas to the panel background instead of flashing black.
+
+ -- s4rt4 <surat.sarta@gmail.com>  Wed, 17 Jun 2026 08:30:00 +0700
+
 loli (1.0.4) unstable; urgency=medium
 
   * UI polish: animated sidebar collapse, slim scrollbars across all scroll

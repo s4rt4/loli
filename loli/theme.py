@@ -7,6 +7,7 @@ file instead of being swept across the codebase.
 STYLESHEET = """
 QMainWindow { background-color: #f8fafc; }
 QWidget { color: #1e293b; }
+QScrollArea#ContentScroll, QScrollArea#ContentScroll > QWidget, QStackedWidget#ContentStack, QStackedWidget#ContentStack > QWidget { background-color: #f8fafc; }
 QWidget#Sidebar { background-color: #1e293b; color: white; }
 QWidget#Sidebar QLabel { color: white; }
 QScrollArea#MenuScroll, QScrollArea#MenuScroll > QWidget > QWidget { background-color: #1e293b; border: none; }
